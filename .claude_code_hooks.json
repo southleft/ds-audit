@@ -1,0 +1,5 @@
+{
+  "preToolUse": "./hooks/pre-tool-use.sh",
+  "postToolUse": "./hooks/post-tool-use.sh",
+  "notification": "./hooks/notification.sh"
+}

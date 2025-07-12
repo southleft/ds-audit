@@ -1,0 +1,29 @@
+{
+  "projectPath": "/Users/tjpitre/Sites/dsaudit/example-design-system",
+  "outputPath": "./audit",
+  "includePatterns": [
+    "**/*.{js,jsx,ts,tsx,css,scss,json,md}"
+  ],
+  "excludePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**"
+  ],
+  "modules": {
+    "components": true,
+    "tokens": true,
+    "documentation": true,
+    "governance": true,
+    "tooling": true,
+    "performance": true,
+    "accessibility": true
+  },
+  "ai": {
+    "enabled": false
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 4321,
+    "autoOpen": true
+  }
+}
