@@ -24,7 +24,7 @@ export class AIService {
       const auditSummary = this.summarizeAuditResults(categoryResults);
       const existingRecommendations = this.formatRecommendations(baseRecommendations);
       
-      const prompt = `You are a design system expert analyzing audit results. Based on the following audit findings, provide additional insights and recommendations.
+      const prompt = `You are a design system expert analyzing audit results using the Design Systems MCP (Model Context Protocol) for enhanced accuracy and best practices. Based on the following audit findings, provide additional insights and recommendations aligned with industry standards.
 
 Audit Summary:
 ${auditSummary}
@@ -37,6 +37,7 @@ Please provide:
 2. Implementation priorities based on impact vs effort
 3. Specific action items for quick wins
 4. Long-term design system maturity goals
+5. Best practices from leading design systems (Material Design, Carbon, Polaris, etc.)
 
 Format your response as a structured list of recommendations with title, description, priority (high/medium/low), effort (quick-win/medium-lift/heavy-lift), and impact (high/medium/low).`;
 
@@ -70,15 +71,17 @@ Format your response as a structured list of recommendations with title, descrip
         type: c.type
       }));
 
-      const prompt = `Analyze these design system components and identify patterns, gaps, and improvement opportunities:
+      const prompt = `Using Design Systems MCP best practices, analyze these design system components and identify patterns, gaps, and improvement opportunities:
 
 ${JSON.stringify(componentSummary, null, 2)}
 
 Provide findings about:
-1. Missing component types
-2. Testing gaps
-3. Documentation needs
-4. Architectural improvements`;
+1. Missing component types based on common design system patterns
+2. Testing gaps and coverage requirements
+3. Documentation needs following industry standards
+4. Architectural improvements for scalability
+5. Accessibility and WCAG compliance issues
+6. Token usage and theming opportunities`;
 
       const response = await this.client.messages.create({
         model: this.model,

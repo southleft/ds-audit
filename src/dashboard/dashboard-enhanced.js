@@ -64,37 +64,37 @@ const categoryDescriptions = {
 
 function renderDashboard(results) {
   const root = document.getElementById('root');
-  
+
   const dashboard = createElement('div', 'dashboard');
-  
+
   // Header with branding
   const header = createHeader(results);
   dashboard.appendChild(header);
-  
+
   // Scan info
   const scanInfo = createScanInfo(results);
   dashboard.appendChild(scanInfo);
-  
+
   // Overall Score Hero
   const scoreHero = createScoreHero(results);
   dashboard.appendChild(scoreHero);
-  
+
   // Category Metrics Grid with expandable details
   const metricsGrid = createDetailedMetricsGrid(results.categories);
   dashboard.appendChild(metricsGrid);
-  
+
   // Performance Chart
   const chartSection = createChartSection(results);
   dashboard.appendChild(chartSection);
-  
+
   // Role-based Recommendations
   if (results.recommendations && results.recommendations.length > 0) {
     const recommendations = createRoleBasedRecommendations(results.recommendations);
     dashboard.appendChild(recommendations);
   }
-  
+
   root.appendChild(dashboard);
-  
+
   // Animate elements on load
   setTimeout(() => {
     animateProgress();
@@ -105,11 +105,11 @@ function renderDashboard(results) {
 
 function createHeader(results) {
   const header = createElement('div', 'header');
-  
+
   header.innerHTML = `
     <div class="brand">
       <div class="brand-icon">DS</div>
-      <h1>dsaudit</h1>
+      <h1>DSAudit</h1>
     </div>
     <h2>Design System Health Report</h2>
     <p class="header-description">
@@ -120,17 +120,17 @@ function createHeader(results) {
       Analysis completed ${new Date(results.timestamp).toLocaleString()} • ${results.metadata?.projectPath || 'Current Project'}
     </div>
   `;
-  
+
   return header;
 }
 
 function createScanInfo(results) {
   const scanInfo = createElement('div', 'scan-info');
-  
+
   // Calculate total files scanned
   const totalFiles = results.categories.reduce((sum, cat) => sum + (cat.metrics?.filesScanned || 0), 0);
   const totalIssues = results.categories.reduce((sum, cat) => sum + (cat.findings?.length || 0), 0);
-  
+
   scanInfo.innerHTML = `
     <div class="scan-stat">
       <div class="scan-stat-value">${totalFiles.toLocaleString()}</div>
@@ -149,14 +149,14 @@ function createScanInfo(results) {
       <div class="scan-stat-label">Recommendations</div>
     </div>
   `;
-  
+
   return scanInfo;
 }
 
 function createScoreHero(results) {
   const hero = createElement('div', 'score-hero');
   const content = createElement('div', 'score-content');
-  
+
   // Score Circle
   const scoreCircle = createElement('div', 'score-circle');
   scoreCircle.innerHTML = `
@@ -177,15 +177,15 @@ function createScoreHero(results) {
       <div class="score-label">Overall Score</div>
     </div>
   `;
-  
+
   // Score Details
   const details = createElement('div', 'score-details');
-  
+
   // Count categories by performance
   const excellent = results.categories.filter(c => c.score >= 80).length;
   const good = results.categories.filter(c => c.score >= 60 && c.score < 80).length;
   const needsWork = results.categories.filter(c => c.score < 60).length;
-  
+
   details.innerHTML = `
     <h2>${getScoreTitle(results.overallScore)}</h2>
     <p>${getScoreDescription(results.overallScore)}</p>
@@ -195,44 +195,44 @@ function createScoreHero(results) {
       ${needsWork > 0 ? createBadge('×', `${needsWork} Needs Work`, 'danger') : ''}
     </div>
   `;
-  
+
   content.appendChild(scoreCircle);
   content.appendChild(details);
   hero.appendChild(content);
-  
+
   return hero;
 }
 
 function createDetailedMetricsGrid(categories) {
   const grid = createElement('div', 'metrics-grid');
-  
+
   categories.forEach((category, index) => {
     const card = createElement('div', 'metric-card');
     card.dataset.category = category.name;
-    
+
     // Summary section (always visible)
     const summary = createElement('div', 'metric-summary');
-    
+
     const header = createElement('div', 'metric-header');
-    
+
     const info = createElement('div', 'metric-info');
     info.innerHTML = `
       <h3>${category.name}</h3>
       <div class="metric-score">${category.score}<span style="font-size: 1rem; font-weight: 400; color: var(--text-secondary);">/100</span></div>
     `;
-    
+
     const icon = createElement('div', `metric-icon icon-gradient-${(index % 4) + 1}`);
     icon.textContent = getIconForCategory(category.name);
-    
+
     header.appendChild(info);
     header.appendChild(icon);
     summary.appendChild(header);
-    
+
     // Key metrics preview
     if (category.metrics) {
       const metricsPreview = createElement('div');
       metricsPreview.style.marginTop = '1rem';
-      
+
       const keyMetrics = Object.entries(category.metrics).slice(0, 2);
       keyMetrics.forEach(([key, value]) => {
         const metric = createElement('div');
@@ -248,7 +248,7 @@ function createDetailedMetricsGrid(categories) {
       });
       summary.appendChild(metricsPreview);
     }
-    
+
     const progress = createElement('div', 'metric-progress');
     progress.innerHTML = `
       <div class="progress-bar">
@@ -256,26 +256,26 @@ function createDetailedMetricsGrid(categories) {
       </div>
     `;
     summary.appendChild(progress);
-    
+
     const hint = createElement('div', 'expand-hint');
     hint.textContent = 'Click for details';
     summary.appendChild(hint);
-    
+
     card.appendChild(summary);
-    
+
     // Detailed section (hidden by default)
     const details = createMetricDetails(category);
     card.appendChild(details);
-    
+
     grid.appendChild(card);
   });
-  
+
   return grid;
 }
 
 function createMetricDetails(category) {
   const details = createElement('div', 'metric-details');
-  
+
   // Description
   const desc = categoryDescriptions[category.name];
   if (desc) {
@@ -288,16 +288,16 @@ function createMetricDetails(category) {
     `;
     details.appendChild(description);
   }
-  
+
   // Issue breakdown
   if (category.findings && category.findings.length > 0) {
     const breakdown = createElement('div', 'issue-breakdown');
-    
+
     // Group findings by severity
     const critical = category.findings.filter(f => f.severity === 'critical' || f.severity === 'high');
     const warnings = category.findings.filter(f => f.severity === 'medium');
     const passed = category.findings.filter(f => f.type === 'success' || f.severity === 'low');
-    
+
     // Critical issues
     if (critical.length > 0) {
       const section = createElement('div', 'issue-section');
@@ -315,7 +315,7 @@ function createMetricDetails(category) {
       `;
       breakdown.appendChild(section);
     }
-    
+
     // Warnings
     if (warnings.length > 0) {
       const section = createElement('div', 'issue-section');
@@ -333,7 +333,7 @@ function createMetricDetails(category) {
       `;
       breakdown.appendChild(section);
     }
-    
+
     // Passed checks
     if (passed.length > 0) {
       const section = createElement('div', 'issue-section');
@@ -351,16 +351,16 @@ function createMetricDetails(category) {
       `;
       breakdown.appendChild(section);
     }
-    
+
     details.appendChild(breakdown);
   }
-  
+
   // All metrics
   if (category.metrics && Object.keys(category.metrics).length > 2) {
     const allMetrics = createElement('div');
     allMetrics.style.marginTop = '1.5rem';
     allMetrics.innerHTML = '<h4 style="margin-bottom: 0.75rem;">Detailed Metrics</h4>';
-    
+
     Object.entries(category.metrics).forEach(([key, value]) => {
       const metric = createElement('div');
       metric.style.display = 'flex';
@@ -376,16 +376,16 @@ function createMetricDetails(category) {
       `;
       allMetrics.appendChild(metric);
     });
-    
+
     details.appendChild(allMetrics);
   }
-  
+
   return details;
 }
 
 function createChartSection(results) {
   const section = createElement('div', 'chart-section');
-  
+
   const header = createElement('div', 'chart-header');
   header.innerHTML = `
     <h2>Category Performance</h2>
@@ -393,23 +393,23 @@ function createChartSection(results) {
       <span style="color: var(--text-secondary);">Performance across all categories</span>
     </div>
   `;
-  
+
   const container = createElement('div', 'chart-container');
   container.innerHTML = '<canvas id="performanceChart"></canvas>';
-  
+
   section.appendChild(header);
   section.appendChild(container);
-  
+
   return section;
 }
 
 function createRoleBasedRecommendations(recommendations) {
   const section = createElement('div', 'recommendations');
-  
+
   const title = createElement('h2');
   title.textContent = 'Actionable Recommendations by Role';
   section.appendChild(title);
-  
+
   // Tabs for different roles
   const tabs = createElement('div', 'recommendation-tabs');
   tabs.innerHTML = `
@@ -419,29 +419,29 @@ function createRoleBasedRecommendations(recommendations) {
     <button class="tab" data-role="product">Product Owners</button>
   `;
   section.appendChild(tabs);
-  
+
   // Content for each role
   const allContent = createElement('div', 'recommendation-content active');
   allContent.dataset.role = 'all';
   recommendations.slice(0, 5).forEach(rec => {
     allContent.appendChild(createRecommendationItem(rec));
   });
-  
+
   const designContent = createElement('div', 'recommendation-content');
   designContent.dataset.role = 'design';
-  const designRecs = recommendations.filter(r => 
-    r.title.toLowerCase().includes('design') || 
+  const designRecs = recommendations.filter(r =>
+    r.title.toLowerCase().includes('design') ||
     r.title.toLowerCase().includes('token') ||
     r.title.toLowerCase().includes('documentation')
   );
   designRecs.forEach(rec => {
     designContent.appendChild(createRecommendationItem(rec));
   });
-  
+
   const devContent = createElement('div', 'recommendation-content');
   devContent.dataset.role = 'dev';
-  const devRecs = recommendations.filter(r => 
-    r.title.toLowerCase().includes('component') || 
+  const devRecs = recommendations.filter(r =>
+    r.title.toLowerCase().includes('component') ||
     r.title.toLowerCase().includes('test') ||
     r.title.toLowerCase().includes('tooling') ||
     r.title.toLowerCase().includes('performance')
@@ -449,33 +449,33 @@ function createRoleBasedRecommendations(recommendations) {
   devRecs.forEach(rec => {
     devContent.appendChild(createRecommendationItem(rec));
   });
-  
+
   const productContent = createElement('div', 'recommendation-content');
   productContent.dataset.role = 'product';
-  const productRecs = recommendations.filter(r => 
-    r.title.toLowerCase().includes('governance') || 
+  const productRecs = recommendations.filter(r =>
+    r.title.toLowerCase().includes('governance') ||
     r.title.toLowerCase().includes('process') ||
     r.title.toLowerCase().includes('adoption')
   );
   productRecs.forEach(rec => {
     productContent.appendChild(createRecommendationItem(rec));
   });
-  
+
   section.appendChild(allContent);
   section.appendChild(designContent);
   section.appendChild(devContent);
   section.appendChild(productContent);
-  
+
   return section;
 }
 
 function createRecommendationItem(rec) {
   const item = createElement('div', 'recommendation-item');
-  
+
   const icon = createElement('div', 'recommendation-icon');
   icon.style.background = getPriorityGradient(rec.priority);
   icon.textContent = getPriorityIcon(rec.priority);
-  
+
   const content = createElement('div', 'recommendation-content-inner');
   content.innerHTML = `
     <div class="recommendation-title">${rec.title}</div>
@@ -487,10 +487,10 @@ function createRecommendationItem(rec) {
       ${rec.category ? `<span class="tag">${rec.category}</span>` : ''}
     </div>
   `;
-  
+
   item.appendChild(icon);
   item.appendChild(content);
-  
+
   return item;
 }
 
@@ -594,19 +594,19 @@ function setupInteractions() {
       this.classList.toggle('expanded');
     });
   });
-  
+
   // Tab switching for recommendations
   const tabs = document.querySelectorAll('.tab');
   const contents = document.querySelectorAll('.recommendation-content');
-  
+
   tabs.forEach(tab => {
     tab.addEventListener('click', function() {
       const role = this.dataset.role;
-      
+
       // Update active tab
       tabs.forEach(t => t.classList.remove('active'));
       this.classList.add('active');
-      
+
       // Show corresponding content
       contents.forEach(content => {
         if (content.dataset.role === role) {
@@ -621,7 +621,7 @@ function setupInteractions() {
 
 function renderCharts(results) {
   const ctx = document.getElementById('performanceChart').getContext('2d');
-  
+
   // Create a more visually appealing chart
   new Chart(ctx, {
     type: 'bar',

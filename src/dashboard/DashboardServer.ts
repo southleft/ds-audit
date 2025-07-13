@@ -114,12 +114,24 @@ export class DashboardServer {
         res.status(500).send('Error loading dashboard script');
       }
     });
+    
+    // Serve new sidebar dashboard JS
+    this.app.get('/dashboard-sidebar.js', async (req, res) => {
+      try {
+        const jsPath = path.join(__dirname, 'dashboard-sidebar.js');
+        const js = await fs.readFile(jsPath, 'utf-8');
+        res.type('application/javascript').send(js);
+      } catch (error: any) {
+        this.logger.error(`Error loading sidebar dashboard script: ${error.message}`);
+        res.status(500).send('Error loading dashboard script');
+      }
+    });
 
     // Serve the dashboard HTML
     this.app.get('/', async (req, res) => {
       try {
-        // Use enhanced dashboard template
-        const htmlPath = path.join(__dirname, 'dashboard-enhanced.html');
+        // Use new sidebar dashboard template
+        const htmlPath = path.join(__dirname, 'dashboard-sidebar.html');
         const html = await fs.readFile(htmlPath, 'utf-8');
         res.send(html);
       } catch (error: any) {
