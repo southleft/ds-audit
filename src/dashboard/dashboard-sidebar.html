@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DSaudit - Design System Health Report</title>
+  <title>DSAudit - Design System Health Report</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -238,6 +238,7 @@
       color: var(--text-secondary);
       max-width: 600px;
       line-height: 1.8;
+      margin-bottom: 2rem;
     }
 
     /* Score Card */
@@ -370,6 +371,21 @@
 
     .metric-summary {
       padding: 1.5rem;
+      position: relative;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    
+    .metric-card .expand-hint {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      opacity: 0.8;
+      transition: opacity 0.2s;
+    }
+    
+    .metric-card:hover .expand-hint {
+      opacity: 1;
     }
 
     .metric-header {
@@ -379,6 +395,10 @@
       margin-bottom: 1.5rem;
     }
 
+    .metric-info {
+      flex: 1;
+    }
+    
     .metric-info h3 {
       font-size: 0.875rem;
       font-weight: 500;
@@ -399,6 +419,7 @@
       align-items: center;
       justify-content: center;
       font-size: 1.25rem;
+      flex-shrink: 0;
     }
 
     .icon-gradient-1 { background: var(--gradient-primary); }
@@ -467,6 +488,48 @@
       font-size: 0.75rem;
       color: var(--text-secondary);
       line-height: 1.6;
+    }
+
+    .path-group {
+      margin-bottom: 1rem;
+    }
+
+    .path-group h6 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent-primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .path-stats {
+      margin-left: 1rem;
+    }
+
+    .file-types {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+    }
+
+    .file-type-badge {
+      padding: 0.2rem 0.5rem;
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--accent-primary);
+      border-radius: 0.5rem;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+
+    .sample-paths {
+      margin-top: 0.5rem;
+    }
+
+    .path-item {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.25rem;
+      word-break: break-all;
     }
 
     .issue-breakdown {
@@ -654,13 +717,13 @@
       border-radius: 1.5rem;
       padding: 2rem;
     }
-    
+
     .recommendations h2 {
       font-size: 1.25rem;
       font-weight: 600;
       margin-bottom: 1.5rem;
     }
-    
+
     .recommendation-tabs {
       display: flex;
       gap: 1rem;
@@ -668,7 +731,7 @@
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       padding-bottom: 0;
     }
-    
+
     .tab {
       padding: 0.75rem 1.5rem;
       background: none;
@@ -682,15 +745,15 @@
       font-family: inherit;
       margin-bottom: -1px;
     }
-    
+
     .tab:hover {
       color: var(--text-primary);
     }
-    
+
     .tab.active {
       color: var(--accent-primary);
     }
-    
+
     .tab.active::after {
       content: '';
       position: absolute;
@@ -700,15 +763,15 @@
       height: 2px;
       background: var(--accent-primary);
     }
-    
+
     .recommendation-content {
       display: none;
     }
-    
+
     .recommendation-content.active {
       display: block;
     }
-    
+
     .recommendation-item {
       display: flex;
       gap: 1rem;
@@ -719,12 +782,12 @@
       border: 1px solid rgba(255, 255, 255, 0.05);
       transition: all 0.2s;
     }
-    
+
     .recommendation-item:hover {
       background: rgba(255, 255, 255, 0.05);
       border-color: rgba(255, 255, 255, 0.1);
     }
-    
+
     .recommendation-icon {
       width: 40px;
       height: 40px;
@@ -736,32 +799,32 @@
       flex-shrink: 0;
       font-size: 1.25rem;
     }
-    
+
     .recommendation-content-inner {
       flex: 1;
       min-width: 0;
     }
-    
+
     .recommendation-title {
       font-weight: 600;
       margin-bottom: 0.5rem;
       line-height: 1.4;
     }
-    
+
     .recommendation-description {
       font-size: 0.875rem;
       color: var(--text-secondary);
       margin-bottom: 0.75rem;
       line-height: 1.6;
     }
-    
+
     .recommendation-tags {
       display: flex;
       gap: 0.5rem;
       flex-wrap: wrap;
       align-items: center;
     }
-    
+
     .tag {
       padding: 0.25rem 0.75rem;
       border-radius: 1rem;
@@ -771,10 +834,284 @@
       color: var(--text-secondary);
       white-space: nowrap;
     }
-    
+
     .tag-high { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
     .tag-medium { color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
     .tag-low { color: #10b981; background: rgba(16, 185, 129, 0.1); }
+
+    /* AI Insights Section */
+    .ai-insights-container {
+      background: var(--bg-card);
+      border-radius: 1.5rem;
+      padding: 2rem;
+    }
+    
+    .insight-section {
+      margin-bottom: 2.5rem;
+    }
+    
+    .insight-section:last-child {
+      margin-bottom: 0;
+    }
+    
+    .insight-heading {
+      font-size: 1.375rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 1.25rem;
+    }
+    
+    .insight-subheading {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 1rem;
+    }
+    
+    .insight-text {
+      font-size: 0.9375rem;
+      line-height: 1.8;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+    }
+    
+    .insight-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .insight-list-item {
+      position: relative;
+      padding-left: 2rem;
+      margin-bottom: 1rem;
+      font-size: 0.9375rem;
+      line-height: 1.7;
+      color: var(--text-secondary);
+    }
+    
+    .insight-list-item:before {
+      content: '•';
+      position: absolute;
+      left: 0.75rem;
+      top: 0;
+      color: var(--accent-primary);
+      font-weight: 700;
+    }
+    
+    .insight-list-item:last-child {
+      margin-bottom: 0;
+    }
+    
+    .insight-sources {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+    }
+    
+    .insight-sources-text {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.75rem;
+    }
+    
+    .insight-sources-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+    }
+    
+    .insight-sources-list li {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      padding-left: 1rem;
+      position: relative;
+    }
+    
+    .insight-sources-list li:before {
+      content: '→';
+      position: absolute;
+      left: 0;
+      color: var(--accent-primary);
+      font-size: 0.75rem;
+    }
+    
+    .insight-sources-list a {
+      color: var(--accent-primary);
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    
+    .insight-sources-list a:hover {
+      opacity: 0.8;
+      text-decoration: underline;
+    }
+
+    /* Chat Interface */
+    .chat-container {
+      background: var(--bg-card);
+      border-radius: 1.5rem;
+      height: calc(100vh - 8rem);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-header {
+      padding: 1.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .chat-header h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    
+    .chat-header p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+    
+    .chat-messages {
+      flex: 1;
+      padding: 1.5rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    
+    .message {
+      display: flex;
+      gap: 1rem;
+      max-width: 80%;
+    }
+    
+    .message.user {
+      align-self: flex-end;
+      flex-direction: row-reverse;
+    }
+    
+    .message-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 0.875rem;
+      flex-shrink: 0;
+    }
+    
+    .message.user .message-avatar {
+      background: var(--gradient-primary);
+    }
+    
+    .message.assistant .message-avatar {
+      background: var(--gradient-success);
+    }
+    
+    .message-content {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 1rem;
+      border-radius: 1rem;
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+    
+    .message.user .message-content {
+      background: rgba(99, 102, 241, 0.2);
+    }
+    
+    .chat-input {
+      padding: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .chat-input-wrapper {
+      display: flex;
+      gap: 1rem;
+    }
+    
+    .chat-input textarea {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.875rem;
+      resize: none;
+      outline: none;
+      transition: all 0.2s;
+    }
+    
+    .chat-input textarea:focus {
+      border-color: var(--accent-primary);
+      background: rgba(255, 255, 255, 0.08);
+    }
+    
+    .chat-send-button {
+      padding: 0.75rem 1.5rem;
+      background: var(--gradient-primary);
+      border: none;
+      border-radius: 0.75rem;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .chat-send-button:hover {
+      opacity: 0.9;
+    }
+    
+    .chat-send-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .chat-loading {
+      display: flex;
+      gap: 0.25rem;
+      padding: 1rem;
+    }
+    
+    .chat-loading span {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-primary);
+      border-radius: 50%;
+      animation: chatPulse 1.4s ease-in-out infinite;
+    }
+    
+    .chat-loading span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    
+    .chat-loading span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+    
+    @keyframes chatPulse {
+      0%, 60%, 100% {
+        opacity: 0.3;
+        transform: scale(0.8);
+      }
+      30% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
 
     /* Responsive */
     @media (max-width: 768px) {
@@ -852,6 +1189,12 @@
             </svg>
             <span>Scanned Paths</span>
           </a>
+          <a href="#" class="nav-item" data-section="chat">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+            </svg>
+            <span>Ask Claude</span>
+          </a>
         </div>
       </nav>
 
@@ -866,6 +1209,11 @@
           <div id="projectPath"></div>
           <div id="timestamp"></div>
           <div id="mcp-status"></div>
+          <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+            <small style="color: var(--text-secondary);">
+              Made by <a href="https://southleft.com" target="_blank" rel="noopener" style="color: var(--accent-primary); text-decoration: none;">Southleft</a>
+            </small>
+          </div>
         </div>
       </div>
     </aside>
@@ -878,6 +1226,7 @@
       <div id="recommendations" class="content-section"></div>
       <div id="insights" class="content-section"></div>
       <div id="paths" class="content-section"></div>
+      <div id="chat" class="content-section"></div>
     </main>
   </div>
 

@@ -100,6 +100,37 @@ export class DashboardServer {
         modules: this.config.modules,
       });
     });
+    
+    // Chat API endpoint
+    this.app.post('/api/chat', async (req, res) => {
+      try {
+        const { message, context } = req.body;
+        
+        // Check if AI is configured
+        if (!this.config.ai?.enabled || !this.config.ai?.apiKey) {
+          res.status(503).json({ 
+            error: 'AI service not configured',
+            response: 'AI chat requires an API key to be configured. Please ensure AI is enabled in your audit configuration.'
+          });
+          return;
+        }
+        
+        // Create AIService instance to handle the chat
+        const { AIService } = await import('../core/AIService.js');
+        const aiService = new AIService(this.config.ai.apiKey, this.config.ai.model);
+        
+        // Generate contextual response using Claude API
+        const response = await aiService.generateChatResponse(message, context, this.results);
+        
+        res.json({ response });
+      } catch (error: any) {
+        this.logger.error(`Chat API error: ${error}`);
+        res.status(500).json({ 
+          error: 'Internal server error',
+          response: 'I apologize, but I encountered an error processing your request. Please try again later.'
+        });
+      }
+    });
 
     // Serve static files
     this.app.get('/dashboard.js', async (req, res) => {
@@ -193,5 +224,48 @@ export class DashboardServer {
     if (this.server) {
       this.server.close();
     }
+  }
+  
+  private generateContextualResponse(message: string, context: any): string {
+    const lowerMessage = message.toLowerCase();
+    
+    // Check for score-related questions
+    if (lowerMessage.includes('score') || lowerMessage.includes('grade')) {
+      return `Your design system has an overall score of ${context.overallScore}/100. Here's the breakdown by category:\n\n${
+        context.categories.map((c: any) => `• ${c.name}: ${c.score}/100`).join('\n')
+      }\n\nThe areas that need the most attention are those with scores below 60. Would you like specific recommendations for improving any particular category?`;
+    }
+    
+    // Check for recommendation questions
+    if (lowerMessage.includes('recommend') || lowerMessage.includes('improve') || lowerMessage.includes('fix')) {
+      return `Based on your audit results, here are the top recommendations:\n\n${
+        context.topRecommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n')
+      }\n\nFocus on the lowest-scoring categories first for the biggest impact. Would you like detailed steps for any of these recommendations?`;
+    }
+    
+    // Check for specific category questions
+    const categoryNames = context.categories.map((c: any) => c.name.toLowerCase());
+    const mentionedCategory = categoryNames.find((name: string) => lowerMessage.includes(name));
+    
+    if (mentionedCategory) {
+      const category = context.categories.find((c: any) => c.name.toLowerCase() === mentionedCategory);
+      return `The ${category.name} category scored ${category.score}/100 with ${category.findings} findings.\n\nThis category evaluates ${this.getCategoryDescription(category.name)}.\n\nWould you like specific action items to improve this score?`;
+    }
+    
+    // Default response
+    return `I can help you understand your design system audit results. You can ask me about:\n\n• Your overall score and grades\n• Specific category scores and what they mean\n• Recommendations for improvement\n• Best practices for design systems\n• How to prioritize fixes\n\nWhat would you like to know more about?`;
+  }
+  
+  private getCategoryDescription(name: string): string {
+    const descriptions: Record<string, string> = {
+      'Component Library': 'the structure, organization, and quality of your component library including TypeScript support, testing coverage, and documentation',
+      'Design Tokens': 'your design token architecture, semantic naming, theming support, and integration with design tools',
+      'Documentation': 'the completeness and quality of your documentation including API docs, usage examples, and contribution guidelines',
+      'Governance': 'your versioning strategy, contribution process, code review practices, and design system team structure',
+      'Tooling': 'your build setup, linting configuration, development environment, and CI/CD integration',
+      'Performance': 'bundle sizes, build times, runtime performance, and optimization strategies',
+      'Accessibility': 'ARIA compliance, keyboard navigation, screen reader support, and inclusive design practices'
+    };
+    return descriptions[name] || 'various aspects of your design system';
   }
 }

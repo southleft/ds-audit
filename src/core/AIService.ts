@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { CategoryResult, Recommendation, Finding } from '../types/index.js';
+import type { CategoryResult, Recommendation, Finding, AuditResult } from '../types/index.js';
 import { Logger } from '../utils/Logger.js';
 
 export class AIService {
@@ -249,5 +249,139 @@ Provide findings about:
     const commonKeywords = keywords1.filter(k => keywords2.includes(k));
     
     return commonKeywords.length >= 2;
+  }
+
+  async generateInsights(
+    categoryResults: CategoryResult[],
+    overallScore: number
+  ): Promise<{ summary: string; strengths: string[]; improvements: string[]; sources?: boolean }> {
+    try {
+      this.logger.info('Generating AI insights...');
+      
+      const auditSummary = this.summarizeAuditResults(categoryResults);
+      
+      const prompt = `You are a design system expert using the Design Systems MCP for enhanced analysis. Based on the following audit results, provide executive insights.
+
+Overall Score: ${overallScore}/100
+
+Category Results:
+${auditSummary}
+
+Please provide:
+1. A concise executive summary (2-3 sentences) of the design system's current state
+2. List 3-5 key strengths of the design system
+3. List 3-5 critical improvements needed
+
+Format your response as JSON with the following structure:
+{
+  "summary": "Executive summary here",
+  "strengths": ["Strength 1", "Strength 2", ...],
+  "improvements": ["Improvement 1", "Improvement 2", ...]
+}`;
+
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      });
+
+      const textContent = typeof response.content === 'string' ? response.content : 
+                         (response.content[0] as any)?.text || '';
+      
+      try {
+        // Extract JSON from the response
+        const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const insights = JSON.parse(jsonMatch[0]);
+          return {
+            summary: insights.summary || 'Analysis complete.',
+            strengths: insights.strengths || [],
+            improvements: insights.improvements || [],
+            sources: true
+          };
+        }
+      } catch (parseError) {
+        this.logger.warn('Failed to parse AI insights JSON');
+      }
+
+      // Fallback if JSON parsing fails
+      return {
+        summary: 'Design system analysis complete. Review category scores for detailed insights.',
+        strengths: ['Audit completed successfully'],
+        improvements: ['Review low-scoring categories for improvement opportunities'],
+        sources: true
+      };
+      
+    } catch (error) {
+      this.logger.warn('AI insights generation failed');
+      return {
+        summary: 'Design system analysis complete. AI insights temporarily unavailable.',
+        strengths: [],
+        improvements: [],
+        sources: false
+      };
+    }
+  }
+  
+  async generateChatResponse(
+    message: string,
+    context: any,
+    fullResults: AuditResult
+  ): Promise<string> {
+    try {
+      this.logger.info('Generating chat response with Claude...');
+      
+      const prompt = `You are a design system expert assistant helping users understand their design system audit results. You have access to the Design Systems MCP for best practices and industry standards.
+
+User's Design System Context:
+- Overall Score: ${context.overallScore}/100
+- Categories: ${JSON.stringify(context.categories, null, 2)}
+- Top Recommendations: ${JSON.stringify(context.topRecommendations, null, 2)}
+
+Additional Audit Details:
+- Project Path: ${fullResults.projectPath}
+- Total Files Scanned: ${fullResults.metadata.filesScanned}
+- Frameworks Detected: ${fullResults.metadata.frameworksDetected.join(', ')}
+- Tools Detected: ${fullResults.metadata.toolsDetected.join(', ')}
+
+IMPORTANT Framework Context:
+The detected frameworks (${fullResults.metadata.frameworksDetected.join(', ')}) are critical to consider in your response. Evaluate:
+1. Whether the design system is using these frameworks according to their best practices
+2. If there are framework-specific patterns or components they should implement
+3. Any framework-specific performance or accessibility considerations
+4. Whether the frameworks are helping or hindering the design system's effectiveness
+
+User Question: ${message}
+
+Please provide a helpful, specific response that:
+1. Directly answers their question
+2. References specific audit findings when relevant
+3. Provides actionable advice
+4. Mentions industry best practices from leading design systems when applicable
+5. Is encouraging and constructive
+
+Keep your response concise but informative.`;
+
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      });
+
+      const textContent = typeof response.content === 'string' ? response.content : 
+                         (response.content[0] as any)?.text || 'I apologize, but I couldn\'t generate a response.';
+      
+      return textContent;
+      
+    } catch (error) {
+      this.logger.error(`Chat response generation failed: ${error}`);
+      throw error;
+    }
   }
 }

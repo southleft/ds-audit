@@ -32,6 +32,12 @@ export interface AuditResult {
   categories: CategoryResult[];
   recommendations: Recommendation[];
   metadata: AuditMetadata;
+  aiInsights?: {
+    summary: string;
+    strengths: string[];
+    improvements: string[];
+    sources?: boolean;
+  };
 }
 
 export interface CategoryResult {
@@ -42,6 +48,12 @@ export interface CategoryResult {
   weight: number;
   findings: Finding[];
   metrics: Record<string, unknown>;
+  scannedPaths?: string[];
+  detailedPaths?: {
+    pattern: string;
+    matches: string[];
+    fileTypes: Record<string, number>;
+  }[];
 }
 
 export interface Finding {

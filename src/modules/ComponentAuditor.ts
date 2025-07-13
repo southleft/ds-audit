@@ -15,26 +15,86 @@ export class ComponentAuditor {
   async audit(): Promise<CategoryResult> {
     const findings: Finding[] = [];
     const components: ComponentInfo[] = [];
+    const detailedPaths: any[] = [];
+    const allScannedPaths = new Set<string>();
     
-    // Find component files
+    // Find component files - include monorepo patterns
     const componentPatterns = [
-      '**/components/**/*.{tsx,jsx}',
-      '**/src/components/**/*.{tsx,jsx}',
-      '**/lib/components/**/*.{tsx,jsx}',
+      '**/components/**/*.{tsx,jsx,ts,js}',
+      '**/src/components/**/*.{tsx,jsx,ts,js}',
+      '**/lib/components/**/*.{tsx,jsx,ts,js}',
+      '**/packages/*/components/**/*.{tsx,jsx,ts,js}',
+      '**/packages/*/src/components/**/*.{tsx,jsx,ts,js}',
+      '**/packages/*/lib/components/**/*.{tsx,jsx,ts,js}',
+    ];
+    
+    // Also scan for styles
+    const stylePatterns = [
+      '**/components/**/*.{css,scss,sass,less,styl}',
+      '**/src/components/**/*.{css,scss,sass,less,styl}',
+      '**/packages/*/components/**/*.{css,scss,sass,less,styl}',
+      '**/styles/**/*.{css,scss,sass,less,styl}',
+    ];
+    
+    // Scan for test files
+    const testPatterns = [
+      '**/components/**/*.{test,spec}.{ts,tsx,js,jsx}',
+      '**/__tests__/**/*.{ts,tsx,js,jsx}',
+      '**/packages/*/components/**/*.{test,spec}.{ts,tsx,js,jsx}',
+    ];
+    
+    // Scan for stories
+    const storyPatterns = [
+      '**/components/**/*.stories.{ts,tsx,js,jsx,mdx}',
+      '**/packages/*/components/**/*.stories.{ts,tsx,js,jsx,mdx}',
     ];
 
-    const files = await this.scanner.scanFiles(componentPatterns);
-    const filesScanned = files.length;
-
-    for (const file of files) {
-      const componentInfo = await this.analyzeComponent(file.path);
-      if (componentInfo) {
-        components.push(componentInfo);
+    // Process each pattern group
+    const allPatterns = {
+      'Component Files': componentPatterns,
+      'Style Files': stylePatterns,
+      'Test Files': testPatterns,
+      'Story Files': storyPatterns,
+    };
+    
+    let totalFilesScanned = 0;
+    
+    for (const [category, patterns] of Object.entries(allPatterns)) {
+      const patternResults = {
+        pattern: category,
+        matches: [] as string[],
+        fileTypes: {} as Record<string, number>,
+      };
+      
+      for (const pattern of patterns) {
+        const files = await this.scanner.scanFiles(pattern);
+        totalFilesScanned += files.length;
         
-        // Generate findings based on component analysis
-        this.generateFindings(componentInfo, findings);
+        for (const file of files) {
+          patternResults.matches.push(file.path);
+          allScannedPaths.add(file.directory);
+          
+          // Track file types
+          const ext = file.extension.toLowerCase();
+          patternResults.fileTypes[ext] = (patternResults.fileTypes[ext] || 0) + 1;
+          
+          // Only analyze component files
+          if (category === 'Component Files') {
+            const componentInfo = await this.analyzeComponent(file.path);
+            if (componentInfo) {
+              components.push(componentInfo);
+              this.generateFindings(componentInfo, findings);
+            }
+          }
+        }
+      }
+      
+      if (patternResults.matches.length > 0) {
+        detailedPaths.push(patternResults);
       }
     }
+
+    const filesScanned = totalFilesScanned;
 
     // Analyze findings
     const score = this.calculateScore(components, findings);
@@ -54,6 +114,8 @@ export class ComponentAuditor {
         testCoverage: this.calculateTestCoverage(components),
         accessibilityScore: this.calculateAccessibilityScore(components),
       },
+      scannedPaths: Array.from(allScannedPaths).sort(),
+      detailedPaths,
     };
   }
 

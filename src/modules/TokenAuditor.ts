@@ -15,9 +15,11 @@ export class TokenAuditor {
   async audit(): Promise<CategoryResult> {
     const findings: Finding[] = [];
     const tokens: TokenInfo[] = [];
+    const detailedPaths: any[] = [];
+    const allScannedPaths = new Set<string>();
     
-    // Common token file patterns
-    const tokenPatterns = [
+    // Common token file patterns - including monorepo
+    const tokenFilePatterns = [
       '**/tokens/**/*.{js,ts,json,scss,css}',
       '**/design-tokens/**/*.{js,ts,json,scss,css}',
       '**/styles/tokens/**/*.{js,ts,json,scss,css}',
@@ -25,16 +27,68 @@ export class TokenAuditor {
       '**/_variables.scss',
       '**/variables.{scss,css}',
       '**/tokens.{js,ts,json}',
+      '**/packages/*/tokens/**/*.{js,ts,json,scss,css}',
+      '**/packages/*/theme/**/*.{js,ts,json}',
     ];
-
-    const files = await this.scanner.scanFiles(tokenPatterns);
-    const filesScanned = files.length;
-
-    // Analyze token files
-    for (const file of files) {
-      const fileTokens = await this.analyzeTokenFile(file.path);
-      tokens.push(...fileTokens);
+    
+    // CSS Custom Properties patterns
+    const cssVarPatterns = [
+      '**/*.css',
+      '**/*.scss',
+      '**/*.sass',
+      '**/*.less',
+      '**/packages/*/*.{css,scss,sass,less}',
+    ];
+    
+    // Theme configuration patterns
+    const themePatterns = [
+      '**/theme.{js,ts,json}',
+      '**/theme.config.{js,ts}',
+      '**/tailwind.config.{js,ts}',
+      '**/stitches.config.{js,ts}',
+      '**/packages/*/theme.{js,ts,json}',
+    ];
+    
+    const allPatterns = {
+      'Token Files': tokenFilePatterns,
+      'Style Files': cssVarPatterns,
+      'Theme Config': themePatterns,
+    };
+    
+    let totalFilesScanned = 0;
+    
+    for (const [category, patterns] of Object.entries(allPatterns)) {
+      const patternResults = {
+        pattern: category,
+        matches: [] as string[],
+        fileTypes: {} as Record<string, number>,
+      };
+      
+      for (const pattern of patterns) {
+        const files = await this.scanner.scanFiles(pattern);
+        totalFilesScanned += files.length;
+        
+        for (const file of files) {
+          patternResults.matches.push(file.path);
+          allScannedPaths.add(file.directory);
+          
+          const ext = file.extension.toLowerCase();
+          patternResults.fileTypes[ext] = (patternResults.fileTypes[ext] || 0) + 1;
+          
+          // Analyze token files
+          if (category === 'Token Files' || (category === 'Style Files' && ext !== '.css')) {
+            const fileTokens = await this.analyzeTokenFile(file.path);
+            tokens.push(...fileTokens);
+          }
+        }
+      }
+      
+      if (patternResults.matches.length > 0) {
+        detailedPaths.push(patternResults);
+      }
     }
+
+    const filesScanned = totalFilesScanned;
 
     // Check for hardcoded values in style files
     const hardcodedFindings = await this.checkHardcodedValues();
@@ -58,9 +112,11 @@ export class TokenAuditor {
         filesScanned,
         totalTokens: tokens.length,
         tokenTypes: this.categorizeTokens(tokens),
-        tokenFormats: this.getTokenFormats(files),
+        tokenFormats: this.getTokenFormats(detailedPaths),
         hardcodedValues: hardcodedFindings.length,
       },
+      scannedPaths: Array.from(allScannedPaths).sort(),
+      detailedPaths,
     };
   }
 
@@ -370,28 +426,34 @@ export class TokenAuditor {
     return categories;
   }
 
-  private getTokenFormats(files: any[]): string[] {
+  private getTokenFormats(detailedPaths: any[]): string[] {
     const formats = new Set<string>();
     
-    files.forEach(file => {
-      const ext = path.extname(file.path).toLowerCase();
-      switch (ext) {
-        case '.json':
-          formats.add('JSON');
-          break;
-        case '.js':
-          formats.add('JavaScript');
-          break;
-        case '.ts':
-          formats.add('TypeScript');
-          break;
-        case '.scss':
-        case '.sass':
-          formats.add('SCSS');
-          break;
-        case '.css':
-          formats.add('CSS');
-          break;
+    detailedPaths.forEach(pathGroup => {
+      if (pathGroup.fileTypes) {
+        Object.keys(pathGroup.fileTypes).forEach(ext => {
+          switch (ext.toLowerCase()) {
+            case '.json':
+              formats.add('JSON');
+              break;
+            case '.js':
+              formats.add('JavaScript');
+              break;
+            case '.ts':
+              formats.add('TypeScript');
+              break;
+            case '.scss':
+            case '.sass':
+              formats.add('SCSS');
+              break;
+            case '.css':
+              formats.add('CSS');
+              break;
+            case '.less':
+              formats.add('LESS');
+              break;
+          }
+        });
       }
     });
 

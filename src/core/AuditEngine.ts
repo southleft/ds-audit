@@ -107,6 +107,17 @@ export class AuditEngine extends EventEmitter {
 
     const duration = Date.now() - startTime;
     
+    // Generate AI insights if enabled
+    let aiInsights;
+    if (this.config.ai?.enabled && this.config.ai.apiKey && this.aiService) {
+      try {
+        const insights = await this.aiService.generateInsights(categoryResults, score);
+        aiInsights = insights;
+      } catch (error) {
+        this.logger.warn('Failed to generate AI insights');
+      }
+    }
+    
     const result: AuditResult = {
       timestamp: new Date().toISOString(),
       projectPath: this.config.projectPath,
@@ -121,6 +132,7 @@ export class AuditEngine extends EventEmitter {
         frameworksDetected: this.getDetectedFrameworks(categoryResults),
         errors,
       },
+      aiInsights,
     };
 
     this.emit('audit:complete', result);
