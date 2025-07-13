@@ -10,7 +10,14 @@
       "Bash(node:*)",
       "Bash(find:*)",
       "Bash(ls:*)",
-      "Bash(npm test)"
+      "Bash(npm test)",
+      "Bash(npm run lint)",
+      "Bash(npm run typecheck:*)",
+      "Bash(rm:*)",
+      "Bash(pkill:*)",
+      "Bash(readlink:*)",
+      "Bash(curl:*)",
+      "Bash(echo)"
     ],
     "deny": []
   }

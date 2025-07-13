@@ -5,10 +5,12 @@ import { Logger } from '../utils/Logger.js';
 export class AIService {
   private client: Anthropic;
   private logger: Logger;
+  private model: string;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, model: string = 'claude-sonnet-4-20250514') {
     this.client = new Anthropic({ apiKey });
     this.logger = new Logger();
+    this.model = model;
   }
 
   async enhanceRecommendations(
@@ -39,7 +41,7 @@ Please provide:
 Format your response as a structured list of recommendations with title, description, priority (high/medium/low), effort (quick-win/medium-lift/heavy-lift), and impact (high/medium/low).`;
 
       const response = await this.client.messages.create({
-        model: 'claude-3-opus-20240229',
+        model: this.model,
         max_tokens: 2000,
         messages: [{
           role: 'user',
@@ -79,7 +81,7 @@ Provide findings about:
 4. Architectural improvements`;
 
       const response = await this.client.messages.create({
-        model: 'claude-3-opus-20240229',
+        model: this.model,
         max_tokens: 1000,
         messages: [{
           role: 'user',

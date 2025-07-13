@@ -1,12 +1,65 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
+import dotenv from 'dotenv';
 import { Logger } from '../../utils/Logger.js';
 import { AuditConfig } from '../../types/index.js';
 import { AuditEngine } from '../../core/AuditEngine.js';
 import { ReportGenerator } from '../../core/ReportGenerator.js';
 import { DashboardServer } from '../../dashboard/DashboardServer.js';
+
+interface EnvConfig {
+  apiKey?: string;
+  model?: string;
+}
+
+// Helper to load .env file from project directory
+async function loadProjectEnv(projectPath: string): Promise<EnvConfig> {
+  const envPath = path.join(projectPath, '.env');
+  try {
+    const envContent = await fs.readFile(envPath, 'utf-8');
+    const parsed = dotenv.parse(envContent);
+    return {
+      apiKey: parsed.ANTHROPIC_API_KEY,
+      model: parsed.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514'
+    };
+  } catch {
+    return {};
+  }
+}
+
+// Helper to save to .env file in project directory
+async function saveToEnv(projectPath: string, apiKey: string, model: string): Promise<void> {
+  const envPath = path.join(projectPath, '.env');
+  const envContent = `# Design System Audit Configuration
+ANTHROPIC_API_KEY=${apiKey}
+ANTHROPIC_MODEL=${model}
+`;
+  
+  try {
+    // Check if .env exists and append if needed
+    let existingContent = '';
+    try {
+      existingContent = await fs.readFile(envPath, 'utf-8');
+      // Remove existing ANTHROPIC_ lines
+      existingContent = existingContent
+        .split('\n')
+        .filter(line => !line.startsWith('ANTHROPIC_API_KEY=') && !line.startsWith('ANTHROPIC_MODEL='))
+        .join('\n');
+      if (existingContent && !existingContent.endsWith('\n')) {
+        existingContent += '\n';
+      }
+    } catch {
+      // File doesn't exist, that's fine
+    }
+    
+    await fs.writeFile(envPath, existingContent + envContent);
+  } catch (error) {
+    throw new Error(`Failed to save .env file: ${error}`);
+  }
+}
 
 export async function initCommand(options: any): Promise<void> {
   const logger = new Logger();
@@ -75,7 +128,8 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
       accessibility: true,
     },
     ai: {
-      enabled: false,
+      enabled: true,  // AI is always enabled
+      model: 'claude-sonnet-4-20250514',
     },
     dashboard: {
       enabled: true,
@@ -84,8 +138,17 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
     },
   };
 
+  // Load existing .env if available
+  const envConfig = await loadProjectEnv(config.projectPath);
+  
+  if (envConfig.apiKey) {
+    logger.info('Using API configuration from .env file');
+    config.ai.apiKey = envConfig.apiKey;
+    config.ai.model = envConfig.model || 'claude-sonnet-4-20250514';
+  }
+
   if (options.interactive !== false) {
-    const answers = await inquirer.prompt([
+    const prompts: any[] = [
       {
         type: 'checkbox',
         name: 'modules',
@@ -100,38 +163,35 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
           { name: 'Accessibility', value: 'accessibility', checked: true },
         ],
       },
-      {
-        type: 'confirm',
-        name: 'enableAI',
-        message: 'Would you like to enable AI-powered insights? (requires API key)',
-        default: false,
-      },
-      {
-        type: 'input',
+    ];
+    
+    // Only prompt for API key if not found in .env
+    if (!config.ai.apiKey) {
+      prompts.push({
+        type: 'password',
         name: 'apiKey',
         message: 'Enter your Anthropic API key:',
-        when: (answers) => answers.enableAI,
-        validate: (input) => input.length > 0 || 'API key is required',
-      },
-      {
-        type: 'confirm',
-        name: 'enableDashboard',
-        message: 'Would you like to view results in an interactive dashboard?',
-        default: true,
-      },
-    ]);
+        mask: '*',
+        validate: (input: string) => input.length > 0 || 'API key is required',
+      });
+    }
+    
+    const answers = await inquirer.prompt(prompts);
 
     // Update config based on answers
     Object.keys(config.modules).forEach(key => {
       config.modules[key as keyof typeof config.modules] = answers.modules.includes(key);
     });
 
-    config.ai.enabled = answers.enableAI;
+    // Save API key to .env if provided
     if (answers.apiKey) {
       config.ai.apiKey = answers.apiKey;
+      await saveToEnv(config.projectPath, answers.apiKey, config.ai.model!);
+      logger.info('API configuration saved to .env file');
     }
 
-    config.dashboard.enabled = answers.enableDashboard;
+    // Dashboard is always enabled
+    config.dashboard.enabled = true;
   }
 
   return config;

@@ -25,7 +25,7 @@ export class AuditEngine extends EventEmitter {
     this.scoringService = new ScoringService();
     
     if (config.ai.enabled && config.ai.apiKey) {
-      this.aiService = new AIService(config.ai.apiKey);
+      this.aiService = new AIService(config.ai.apiKey, config.ai.model);
     }
 
     this.auditors = new Map();

@@ -1,11 +1,31 @@
 // Fetch audit results when page loads
+console.log('Dashboard loading...');
 fetch('/api/results')
-  .then(res => res.json())
+  .then(res => {
+    console.log('API response status:', res.status);
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    return res.json();
+  })
   .then(data => {
+    console.log('Received data:', data);
     renderDashboard(data);
   })
   .catch(err => {
     console.error('Failed to load audit results:', err);
+    // Show error message on page
+    const root = document.getElementById('root');
+    root.innerHTML = `
+      <div class="container">
+        <div class="card" style="background: #fee; border: 1px solid #fcc; padding: 20px;">
+          <h2>Error Loading Dashboard</h2>
+          <p>Failed to load audit results from the API.</p>
+          <pre>${err.message}</pre>
+          <p>Please check the console for more details.</p>
+        </div>
+      </div>
+    `;
   });
 
 function renderDashboard(results) {
@@ -20,7 +40,12 @@ function renderDashboard(results) {
   
   // Category scores chart
   const chartCard = createElement('div', 'card');
-  chartCard.innerHTML = '<h3>Category Scores</h3><canvas id="radarChart"></canvas>';
+  chartCard.innerHTML = `
+    <h3>Category Scores</h3>
+    <div class="chart-container">
+      <canvas id="radarChart"></canvas>
+    </div>
+  `;
   container.appendChild(chartCard);
   
   // Category cards grid
@@ -171,7 +196,13 @@ function formatMetricValue(value) {
 }
 
 function renderCharts(results) {
-  const ctx = document.getElementById('radarChart').getContext('2d');
+  const canvas = document.getElementById('radarChart');
+  const ctx = canvas.getContext('2d');
+  
+  // Set explicit canvas size
+  canvas.width = 600;
+  canvas.height = 400;
+  
   new Chart(ctx, {
     type: 'radar',
     data: {
@@ -189,11 +220,19 @@ function renderCharts(results) {
     },
     options: {
       responsive: true,
-      maintainAspectRatio: false,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          display: false
+        }
+      },
       scales: {
         r: {
           beginAtZero: true,
-          max: 100
+          max: 100,
+          ticks: {
+            stepSize: 20
+          }
         }
       }
     }

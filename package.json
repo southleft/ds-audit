@@ -23,7 +23,7 @@
   "homepage": "https://github.com/yourusername/dsaudit#readme",
   "scripts": {
     "build": "tsc && npm run copy-assets",
-    "copy-assets": "cp -r src/dashboard/dashboard-template.html src/dashboard/dashboard.js dist/dashboard/",
+    "copy-assets": "cp -r src/dashboard/*.html src/dashboard/*.js dist/dashboard/",
     "dev": "tsx watch src/cli.ts",
     "start": "node dist/cli.js",
     "test": "jest",
@@ -57,12 +57,14 @@
     "chalk": "^5.4.1",
     "chart.js": "^4.5.0",
     "commander": "^14.0.0",
+    "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "fast-glob": "^3.3.3",
     "fs-extra": "^11.3.0",
     "glob": "^11.0.3",
     "inquirer": "^12.7.0",
     "lighthouse": "^12.8.0",
+    "node-fetch": "^3.3.2",
     "ora": "^8.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
