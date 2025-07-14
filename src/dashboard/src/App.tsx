@@ -90,7 +90,7 @@ function App() {
       case 'chat':
         return <Chat auditResult={auditResult} />;
       case 'progress':
-        return <Progress />;
+        return <Progress auditResult={auditResult} />;
       case 'export':
         return <Export auditResult={auditResult} />;
       case 'timeline':

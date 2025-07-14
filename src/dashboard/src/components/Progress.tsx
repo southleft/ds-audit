@@ -1,11 +1,20 @@
-import React from 'react';
-import { Card, Title, Text, Progress as MantineProgress, Group, Badge, Timeline, ThemeIcon, Loader, Alert, Stack, Code } from '@mantine/core';
-import { Activity, CheckCircle, XCircle, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Card, Title, Text, Progress as MantineProgress, Group, Badge, Timeline, ThemeIcon, Loader, Alert, Stack, Code, Button, Divider } from '@mantine/core';
+import { Activity, CheckCircle, XCircle, Clock, Play, RefreshCw } from 'lucide-react';
 import { useProgress } from '../hooks/useProgress';
 import './Progress.css';
 
-const Progress: React.FC = () => {
+interface ProgressProps {
+  auditResult?: {
+    timestamp: string;
+    overallScore: number;
+    overallGrade: string;
+  };
+}
+
+const Progress: React.FC<ProgressProps> = ({ auditResult }) => {
   const { isConnected, progress, currentCategory, message, categoryResults, isComplete } = useProgress();
+  const [isStartingAudit, setIsStartingAudit] = useState(false);
 
   const getCategoryIcon = (status?: 'complete' | 'error' | 'in-progress') => {
     switch (status) {
@@ -31,6 +40,34 @@ const Progress: React.FC = () => {
   ];
 
   const hasActiveAudit = progress > 0 || currentCategory || Object.keys(categoryResults).length > 0;
+
+  const startNewAudit = async () => {
+    setIsStartingAudit(true);
+    try {
+      const response = await fetch('/api/start-audit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to start audit');
+      }
+      
+      const result = await response.json();
+      console.log('Audit started:', result.message);
+    } catch (error) {
+      console.error('Failed to start audit:', error);
+      alert('Failed to start audit. Please try again or use the CLI.');
+    } finally {
+      setIsStartingAudit(false);
+    }
+  };
+
+  const formatDate = (timestamp: string) => {
+    return new Date(timestamp).toLocaleString();
+  };
 
   return (
     <div style={{ padding: '1rem', maxWidth: '800px', margin: '0 auto' }}>
@@ -143,20 +180,70 @@ const Progress: React.FC = () => {
             </Stack>
           </Card>
         ) : (
-          <Alert color="blue" title="Waiting for Audit" icon={<Activity size={16} />}>
-            <Stack gap="md">
-              <Text size="sm">
-                No audit is currently running. To start a new audit and see live progress, run the following command in your terminal:
-              </Text>
-              <Code block style={{ fontSize: '12px', backgroundColor: 'var(--bg-tertiary)' }}>
-                npm run build{'\n'}
-                node dist/cli.js init --path /path/to/your-design-system
-              </Code>
-              <Text size="xs" c="dimmed">
-                The progress will appear here automatically when an audit starts. Keep this page open to monitor real-time updates.
-              </Text>
-            </Stack>
-          </Alert>
+          <Stack gap="lg">
+            {/* Last Audit Info */}
+            {auditResult && (
+              <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
+                <Stack gap="md">
+                  <Group justify="space-between" align="center">
+                    <Title order={4}>Last Audit</Title>
+                    <Badge color="green" variant="light">
+                      Score: {auditResult.overallScore} (Grade {auditResult.overallGrade})
+                    </Badge>
+                  </Group>
+                  <Group gap="md">
+                    <Clock size={16} color="var(--mantine-color-gray-6)" />
+                    <Text size="sm" c="dimmed">
+                      Completed on {formatDate(auditResult.timestamp)}
+                    </Text>
+                  </Group>
+                  <Text size="sm">
+                    Would you like to perform another audit?
+                  </Text>
+                </Stack>
+              </Card>
+            )}
+            
+            {/* Start New Audit */}
+            <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
+              <Stack gap="md">
+                <Group justify="space-between" align="center">
+                  <Title order={4}>Start New Audit</Title>
+                  <Button
+                    leftSection={<Play size={16} />}
+                    onClick={startNewAudit}
+                    loading={isStartingAudit}
+                    disabled={!isConnected}
+                  >
+                    {isStartingAudit ? 'Starting...' : 'Start Audit'}
+                  </Button>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  {isConnected 
+                    ? 'Click the button above to start a new audit. Progress will be shown in real-time on this page.'
+                    : 'Dashboard server must be connected to start an audit.'}
+                </Text>
+              </Stack>
+            </Card>
+            
+            <Divider label="Or use CLI" labelPosition="center" />
+            
+            {/* CLI Instructions */}
+            <Alert color="blue" title="Alternative: CLI Command" icon={<Activity size={16} />}>
+              <Stack gap="md">
+                <Text size="sm">
+                  You can also start an audit from your terminal:
+                </Text>
+                <Code block style={{ fontSize: '12px', backgroundColor: 'var(--bg-tertiary)' }}>
+                  npm run build{'\n'}
+                  node dist/cli.js init --path /path/to/your-design-system
+                </Code>
+                <Text size="xs" c="dimmed">
+                  The progress will appear here automatically when an audit starts. Keep this page open to monitor real-time updates.
+                </Text>
+              </Stack>
+            </Alert>
+          </Stack>
         )}
       </Stack>
     </div>

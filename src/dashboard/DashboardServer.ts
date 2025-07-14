@@ -163,6 +163,69 @@ export class DashboardServer {
       }
     });
 
+    // Start audit API endpoint
+    this.app.post('/api/start-audit', async (req, res) => {
+      try {
+        this.logger.info('Starting new audit via API...');
+        
+        // Import AuditEngine
+        const { AuditEngine } = await import('../core/AuditEngine.js');
+        
+        // Create new audit engine with current config
+        const engine = new AuditEngine(this.config);
+        
+        // Set up progress tracking
+        let completedCount = 0;
+        const totalCategories = 7; // Known number of categories
+        
+        engine.on('audit:start', () => {
+          completedCount = 0;
+          this.sendProgressUpdate({ type: 'audit:start', progress: 0 });
+        });
+        
+        engine.on('category:start', (categoryId) => {
+          this.sendProgressUpdate({ 
+            type: 'category:start', 
+            category: categoryId,
+            progress: Math.round((completedCount / totalCategories) * 100)
+          });
+        });
+        
+        engine.on('category:complete', (categoryId, result) => {
+          completedCount++;
+          this.sendProgressUpdate({ 
+            type: 'category:complete', 
+            category: categoryId,
+            result,
+            progress: Math.round((completedCount / totalCategories) * 100)
+          });
+        });
+        
+        engine.on('audit:complete', (result) => {
+          this.results = result; // Update stored results
+          this.sendProgressUpdate({ type: 'audit:complete', progress: 100, result });
+        });
+        
+        // Start audit in background
+        engine.run().catch(error => {
+          this.logger.error(`Audit failed: ${error}`);
+          this.sendProgressUpdate({ type: 'audit:error', error: error.message });
+        });
+        
+        res.json({ 
+          success: true, 
+          message: 'Audit started successfully. Check progress page for updates.' 
+        });
+        
+      } catch (error: any) {
+        this.logger.error(`Failed to start audit: ${error}`);
+        res.status(500).json({ 
+          error: 'Failed to start audit',
+          message: error.message 
+        });
+      }
+    });
+
     // Audit file routes
     this.app.get('/audit/report.md', async (req, res) => {
       try {

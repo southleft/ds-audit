@@ -1,15 +1,15 @@
 import React from 'react';
 import { NavLink, Group, Text, Badge, Anchor } from '@mantine/core';
 import { AuditResult } from '@types';
-import { 
-  BarChart3, 
-  FolderOpen, 
-  CheckSquare, 
-  Lightbulb, 
-  BrainCircuit, 
-  MessagesSquare, 
-  Activity, 
-  Clock, 
+import {
+  BarChart3,
+  FolderOpen,
+  CheckSquare,
+  Lightbulb,
+  BrainCircuit,
+  MessagesSquare,
+  Activity,
+  Clock,
   Download
 } from 'lucide-react';
 import './Sidebar.css';
@@ -22,8 +22,8 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, auditResult }) => {
   // Extract design system name from project path
-  const projectName = auditResult?.projectPath ? 
-    auditResult.projectPath.split('/').pop() || 'Design System' : 
+  const projectName = auditResult?.projectPath ?
+    auditResult.projectPath.split('/').pop() || 'Design System' :
     'Design System';
 
   const navItems = [
@@ -102,19 +102,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, audi
         {auditResult && (
           <div className="audit-info">
             <Text size="xs" c="dimmed" fw={500}>
-              Last audit
-            </Text>
-            <Text size="xs" c="dimmed">
-              {new Date(auditResult.timestamp).toLocaleDateString()}
+              Last audit: {new Date(auditResult.timestamp).toLocaleDateString()}
             </Text>
           </div>
         )}
         <div className="footer-link">
           <Text size="xs" c="dimmed">
-            Made by{' '}
-            <Anchor 
-              href="https://southleft.com" 
-              target="_blank" 
+            Made with ❤️ by{' '}
+            <Anchor
+              href="https://southleft.com"
+              target="_blank"
               size="xs"
               style={{ color: 'var(--text-secondary)' }}
             >
