@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Card, Title, Text, Button, Group, Select, Checkbox, Stack, Divider, Badge } from '@mantine/core';
+import { FileText, FileBarChart, Link, BarChart3 } from 'lucide-react';
 import { AuditResult } from '@types';
 import { exportData, ExportFormat } from '../utils/dataExport';
 import { exportToPDF, ExportOptions } from '../utils/pdfExport';
@@ -58,7 +59,10 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
 
       <div className="export-grid">
         <Card className="export-card">
-          <Title order={4} mb="md">📄 Data Export</Title>
+          <Group gap="xs" mb="md">
+            <FileText size={20} color="var(--mantine-color-blue-6)" />
+            <Title order={4}>Data Export</Title>
+          </Group>
           <Text size="sm" c="dimmed" mb="lg">
             Export audit data in various formats for further analysis or sharing.
           </Text>
@@ -89,7 +93,10 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
         </Card>
 
         <Card className="export-card">
-          <Title order={4} mb="md">📑 PDF Report</Title>
+          <Group gap="xs" mb="md">
+            <FileBarChart size={20} color="var(--mantine-color-blue-6)" />
+            <Title order={4}>PDF Report</Title>
+          </Group>
           <Text size="sm" c="dimmed" mb="lg">
             Generate a comprehensive PDF report with customizable sections.
           </Text>
@@ -143,7 +150,10 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
         </Card>
 
         <Card className="export-card">
-          <Title order={4} mb="md">🔗 Quick Links</Title>
+          <Group gap="xs" mb="md">
+            <Link size={20} color="var(--mantine-color-blue-6)" />
+            <Title order={4}>Quick Links</Title>
+          </Group>
           <Text size="sm" c="dimmed" mb="lg">
             Direct access to generated audit files.
           </Text>
@@ -186,7 +196,10 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
         </Card>
 
         <Card className="export-card">
-          <Title order={4} mb="md">📊 Export Summary</Title>
+          <Group gap="xs" mb="md">
+            <BarChart3 size={20} color="var(--mantine-color-blue-6)" />
+            <Title order={4}>Export Summary</Title>
+          </Group>
           <Text size="sm" c="dimmed" mb="lg">
             Current audit snapshot for quick reference.
           </Text>

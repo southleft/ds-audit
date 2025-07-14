@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Card, Title, Text, Progress as MantineProgress, Group, Badge, Timeline, ThemeIcon, Loader, Alert, Stack, Code, Button, Divider } from '@mantine/core';
-import { Activity, CheckCircle, XCircle, Clock, Play, RefreshCw } from 'lucide-react';
+import { Card, Title, Text, Progress as MantineProgress, Group, Badge, Timeline, Loader, Alert, Stack, Code, Button, Divider } from '@mantine/core';
+import { Activity, CheckCircle, XCircle, Clock, Play } from 'lucide-react';
 import { useProgress } from '../hooks/useProgress';
 import './Progress.css';
 
