@@ -40,7 +40,7 @@ export async function exportToPDF(
           background: white !important;
         }
         .pdf-export-container {
-          font-family: Arial, sans-serif;
+          font-family: 'Work Sans', Arial, sans-serif;
           line-height: 1.6;
         }
         .pdf-header {

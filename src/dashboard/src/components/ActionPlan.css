@@ -1,64 +1,96 @@
 .action-plan-container {
-  padding: 1rem;
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-.progress-card {
-  background: var(--bg-secondary);
+.action-plan-header {
+  margin-bottom: 2rem;
+}
+
+/* Strategic Theme Styling */
+.strategic-theme {
+  padding: 1.5rem;
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
-.action-items-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1rem;
+.strategic-theme:last-child {
+  margin-bottom: 0;
 }
 
-.action-item-card {
-  background: var(--bg-secondary);
+.strategic-theme:hover {
+  border-color: var(--border-light);
+}
+
+/* Initiative Cards */
+.initiative-card {
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
+  transition: all 0.2s ease;
 }
 
-.action-item-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: var(--accent-primary);
-  transform: translateX(-100%);
-  transition: transform 0.3s ease;
+.initiative-card:hover {
+  border-color: var(--border-light);
+  transform: translateX(2px);
 }
 
-.action-item-card:hover::before {
-  transform: translateX(0);
-}
-
-.action-item-card.completed {
-  opacity: 0.7;
+.impact-card {
   background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  padding: 0.75rem;
 }
 
-.action-item-card.completed::after {
-  content: '✓';
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  font-size: 2rem;
-  color: var(--success);
-  opacity: 0.3;
-}
-
-.empty-state {
-  background: var(--bg-secondary);
+/* Methodology Note */
+.methodology-note {
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  padding: 3rem;
-  text-align: center;
 }
 
-.mantine-Checkbox-label {
-  cursor: pointer;
+/* Typography Overrides */
+.action-plan-container h2,
+.action-plan-container h3,
+.action-plan-container h4,
+.action-plan-container h5 {
+  font-family: 'Work Sans', sans-serif;
+}
+
+.action-plan-container .mantine-Badge-root {
+  font-family: 'Work Sans', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .action-plan-container {
+    padding: 1rem;
+  }
+  
+  .strategic-theme {
+    padding: 1rem;
+  }
+  
+  .initiative-card {
+    padding: 1rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .action-plan-container {
+    padding: 0.5rem;
+  }
+  
+  .initiative-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  
+  .strategic-theme {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }

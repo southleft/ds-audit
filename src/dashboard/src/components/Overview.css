@@ -1,40 +1,314 @@
 .overview-container {
-  padding: 1rem;
+  padding: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Primary Metrics Row */
+.primary-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .metric-card {
-  background: var(--bg-secondary);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  transition: all 0.3s ease;
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .metric-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--accent-primary);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+  border-color: var(--border-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--border-light);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.metric-card:hover::before {
+  opacity: 1;
+}
+
+.metric-card.priority::before {
+  background: var(--danger);
+}
+
+.metric-card.quick-wins::before {
+  background: var(--success);
+}
+
+.metric-card.files::before {
+  background: var(--info);
+}
+
+.metric-card.score {
+  justify-content: space-between;
+}
+
+.metric-card.score::before {
+  background: var(--accent-primary);
+}
+
+.metric-icon {
+  font-size: 1.5rem;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.metric-content {
+  flex: 1;
+}
+
+.metric-value {
+  font-size: 1.75rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem !important;
+  font-family: 'Work Sans', sans-serif;
+}
+
+.metric-label {
+  font-size: 0.875rem !important;
+  color: var(--text-secondary);
+  font-weight: 500 !important;
+  font-family: 'Work Sans', sans-serif;
+}
+
+/* Charts Section */
+.charts-section {
+  margin-bottom: 1.5rem;
 }
 
 .chart-card {
-  background: var(--bg-secondary);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  height: 400px;
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.chart-header h4 {
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  color: var(--text-primary);
+  margin: 0;
+  font-family: 'Work Sans', sans-serif;
 }
 
 .chart-container {
   position: relative;
-  height: 320px;
-  width: 100%;
+  flex: 1;
+  min-height: 300px;
 }
 
-.category-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+.chart-container.small {
+  min-height: 280px;
+}
+
+/* Category Summary */
+.category-summary-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-header {
+  margin-bottom: 1.25rem;
+}
+
+.summary-header h4 {
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 0.25rem;
+  font-family: 'Work Sans', sans-serif;
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
 }
 
 .category-item {
-  padding: 1rem;
   background: var(--bg-tertiary);
-  border-radius: 0.5rem;
   border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  padding: 1rem;
+  transition: all 0.2s ease;
+}
+
+.category-item.clickable {
+  cursor: pointer;
+}
+
+.category-item.clickable:hover {
+  border-color: var(--accent-primary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.category-info {
+  flex: 1;
+}
+
+.category-info > text:first-child {
+  font-family: 'Work Sans', sans-serif;
+}
+
+.category-progress {
+  margin-top: 0.75rem;
+}
+
+/* Insights Section */
+.insights-section {
+  margin-top: 1.5rem;
+}
+
+.insight-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  height: 100%;
+}
+
+.insight-card h4 {
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin: 0;
+  font-family: 'Work Sans', sans-serif;
+}
+
+/* Button Overrides */
+.chart-card button {
+  font-family: 'Work Sans', sans-serif;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.chart-card button:hover {
+  color: var(--accent-primary);
+}
+
+/* Progress Bar Styling */
+.mantine-Progress-root {
+  background-color: var(--bg-secondary) !important;
+  height: 6px !important;
+}
+
+.mantine-Progress-bar {
+  transition: width 0.5s ease;
+}
+
+/* Badge Styling */
+.mantine-Badge-root {
+  font-family: 'Work Sans', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .overview-container {
+    padding: 1rem;
+  }
+  
+  .primary-metrics-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  
+  .metric-card {
+    padding: 1rem;
+  }
+  
+  .metric-value {
+    font-size: 1.5rem !important;
+  }
+  
+  .category-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .charts-section .mantine-Grid-col {
+    margin-bottom: 1rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .overview-container {
+    padding: 0.5rem;
+  }
+  
+  .metric-card {
+    border: 1px solid #ddd;
+    page-break-inside: avoid;
+  }
+  
+  .chart-card button {
+    display: none;
+  }
+  
+  .category-item.clickable:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+/* Remove old styles that are no longer needed */
+.overview-header,
+.overview-title,
+.overview-subtitle,
+.hero-metrics,
+.compact-hero-card,
+.insights-grid,
+.performance-highlights,
+.additional-charts,
+.priority-matrix,
+.health-overview,
+.enhanced-category-grid {
+  /* These classes are no longer used */
+  display: none !important;
 }

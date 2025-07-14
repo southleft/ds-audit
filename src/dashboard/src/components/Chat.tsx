@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Title, TextInput, Button, Card, Text, Group, ScrollArea, Loader, Badge } from '@mantine/core';
+import ReactMarkdown from 'react-markdown';
 import { AuditResult } from '@types';
 import { sendChatMessage } from '../utils/api';
 import './Chat.css';
@@ -38,18 +39,26 @@ Feel free to ask me questions like:
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
   const scrollToBottom = () => {
-    if (scrollAreaRef.current) {
-      const scrollArea = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollArea) {
-        scrollArea.scrollTop = scrollArea.scrollHeight;
+    // More reliable scroll to bottom using setTimeout to ensure DOM updates
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
       }
-    }
+      // Fallback to the original method
+      if (scrollAreaRef.current) {
+        const scrollArea = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        if (scrollArea) {
+          scrollArea.scrollTop = scrollArea.scrollHeight;
+        }
+      }
+    }, 100);
   };
 
   const handleSend = async () => {
@@ -67,10 +76,28 @@ Feel free to ask me questions like:
     setIsLoading(true);
 
     try {
-      const response = await sendChatMessage(input, {
-        auditResult,
-        previousMessages: messages.slice(-5) // Send last 5 messages for context
-      });
+      // Create a summary context instead of sending full audit result
+      const summaryContext = {
+        overallScore: auditResult.overallScore,
+        overallGrade: auditResult.overallGrade,
+        projectPath: auditResult.projectPath,
+        timestamp: auditResult.timestamp,
+        metadata: auditResult.metadata,
+        categories: auditResult.categories.map(cat => ({
+          name: cat.name,
+          score: cat.score,
+          grade: cat.grade,
+          weight: cat.weight,
+          findingsCount: cat.findings?.length || 0,
+          recommendationsCount: cat.recommendations?.length || 0,
+          description: cat.description
+        })),
+        topRecommendations: auditResult.recommendations?.slice(0, 5) || [],
+        highPriorityCount: auditResult.recommendations?.filter(r => r.priority === 'high').length || 0,
+        previousMessages: messages.slice(-3).map(m => ({ role: m.role, content: m.content.substring(0, 200) }))
+      };
+
+      const response = await sendChatMessage(input, summaryContext);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -130,9 +157,38 @@ Feel free to ask me questions like:
                   {message.timestamp.toLocaleTimeString()}
                 </Text>
               </div>
-              <Text className="message-content" style={{ whiteSpace: 'pre-wrap' }}>
-                {message.content}
-              </Text>
+              <div className="message-content">
+                {message.role === 'assistant' ? (
+                  <ReactMarkdown
+                    components={{
+                      p: ({ children }) => <Text style={{ marginBottom: '0.5rem' }}>{children}</Text>,
+                      h1: ({ children }) => <Text size="xl" fw={700} mb="sm">{children}</Text>,
+                      h2: ({ children }) => <Text size="lg" fw={600} mb="sm">{children}</Text>,
+                      h3: ({ children }) => <Text size="md" fw={600} mb="xs">{children}</Text>,
+                      ul: ({ children }) => <ul style={{ paddingLeft: '1rem', marginBottom: '0.5rem' }}>{children}</ul>,
+                      ol: ({ children }) => <ol style={{ paddingLeft: '1rem', marginBottom: '0.5rem' }}>{children}</ol>,
+                      li: ({ children }) => <li style={{ marginBottom: '0.25rem' }}>{children}</li>,
+                      code: ({ children }) => (
+                        <Text component="code" style={{ 
+                          backgroundColor: 'var(--mantine-color-gray-1)', 
+                          padding: '0.125rem 0.25rem', 
+                          borderRadius: '0.25rem',
+                          fontFamily: 'monospace',
+                          fontSize: '0.875rem'
+                        }}>
+                          {children}
+                        </Text>
+                      ),
+                      strong: ({ children }) => <Text component="strong" fw={600}>{children}</Text>,
+                      em: ({ children }) => <Text component="em" style={{ fontStyle: 'italic' }}>{children}</Text>
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                ) : (
+                  <Text style={{ whiteSpace: 'pre-wrap' }}>{message.content}</Text>
+                )}
+              </div>
             </div>
           ))}
           {isLoading && (
@@ -148,6 +204,7 @@ Feel free to ask me questions like:
               </Group>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </ScrollArea>
 
         <div className="input-area">

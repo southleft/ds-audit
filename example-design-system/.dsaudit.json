@@ -1,5 +1,5 @@
 {
-  "projectPath": ".",
+  "projectPath": "./example-design-system",
   "outputPath": "./audit",
   "includePatterns": [
     "**/*.{js,jsx,ts,tsx,css,scss,json,md}"

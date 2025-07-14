@@ -96,7 +96,7 @@ export class DashboardServer {
   }
 
   private setupMiddleware(): void {
-    this.app.use(express.json());
+    this.app.use(express.json({ limit: '1mb' })); // Increase payload limit for chat
     // Serve static files if we add them later
   }
 
@@ -160,6 +160,35 @@ export class DashboardServer {
           error: 'Internal server error',
           response: 'I apologize, but I encountered an error processing your request. Please try again later.'
         });
+      }
+    });
+
+    // Audit file routes
+    this.app.get('/audit/report.md', async (req, res) => {
+      try {
+        const projectPath = this.config.projectPath || process.cwd();
+        const reportPath = path.join(projectPath, 'dsaudit-report.md');
+        
+        if (await this.fileExists(reportPath)) {
+          const content = await fs.readFile(reportPath, 'utf-8');
+          res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+          res.send(content);
+        } else {
+          res.status(404).send('Markdown report not found. Run an audit first to generate the report.');
+        }
+      } catch (error: any) {
+        this.logger.error(`Error serving markdown report: ${error.message}`);
+        res.status(500).send('Error loading markdown report');
+      }
+    });
+
+    this.app.get('/audit/results.json', (req, res) => {
+      try {
+        res.setHeader('Content-Type', 'application/json');
+        res.json(this.results);
+      } catch (error: any) {
+        this.logger.error(`Error serving JSON results: ${error.message}`);
+        res.status(500).json({ error: 'Error loading JSON results' });
       }
     });
 

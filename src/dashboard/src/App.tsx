@@ -27,6 +27,32 @@ function App() {
 
   useEffect(() => {
     loadAuditResults();
+    
+    // Handle hash-based navigation
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as Section;
+      if (hash && ['overview', 'categories', 'action-plan', 'recommendations', 'ai-insights', 'chat', 'progress', 'export', 'timeline'].includes(hash)) {
+        setCurrentSection(hash);
+      }
+    };
+    
+    // Handle custom navigation events from overview page
+    const handleNavigateToCategory = (event: CustomEvent) => {
+      setCurrentSection('categories');
+      // Store the category name for highlighting
+      sessionStorage.setItem('highlightCategory', event.detail.categoryName);
+    };
+    
+    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('navigateToCategory', handleNavigateToCategory as EventListener);
+    
+    // Check initial hash
+    handleHashChange();
+    
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('navigateToCategory', handleNavigateToCategory as EventListener);
+    };
   }, []);
 
   const loadAuditResults = async () => {
@@ -93,38 +119,14 @@ function App() {
             size="sm"
           />
           <h1>Design System Audit Dashboard</h1>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button 
-              className="export-pdf-btn" 
-              onClick={async () => {
-                if (auditResult) {
-                  try {
-                    await exportToPDF(auditResult);
-                  } catch (error) {
-                    console.error('PDF export failed:', error);
-                    alert('Failed to export PDF. Please try again.');
-                  }
-                }
-              }}
-              disabled={!auditResult}
-            >
-              Export Report
-            </button>
-            <button 
-              className="export-pdf-btn" 
-              onClick={async () => {
-                try {
-                  await exportCurrentView();
-                } catch (error) {
-                  console.error('PDF export failed:', error);
-                  alert('Failed to export current view. Please try again.');
-                }
-              }}
-              style={{ background: 'var(--accent-secondary)' }}
-            >
-              Export View
-            </button>
-          </div>
+          {auditResult && (
+            <div className="header-score">
+              <div className="score-display">
+                <span className="score-number">{auditResult.overallScore}</span>
+                <span className="score-grade">Grade {auditResult.overallGrade}</span>
+              </div>
+            </div>
+          )}
         </div>
       </AppShell.Header>
 
