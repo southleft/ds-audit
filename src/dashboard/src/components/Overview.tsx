@@ -97,17 +97,26 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
       });
     }
 
-    // Bar Chart with modern styling
+    // Horizontal Bar Chart with sorted data
     if (barChartRef.current) {
+      // Sort categories by score for better ranking visualization
+      const sortedData = auditResult.categories
+        .map(cat => ({ name: cat.name, score: cat.score, color: getColorForScore(cat.score) }))
+        .sort((a, b) => b.score - a.score);
+      
+      const sortedLabels = sortedData.map(item => item.name);
+      const sortedScores = sortedData.map(item => item.score);
+      const sortedColors = sortedData.map(item => item.color);
+
       chartInstances.current.bar = new Chart(barChartRef.current, {
         type: 'bar',
         data: {
-          labels: categories,
+          labels: sortedLabels,
           datasets: [{
             label: 'Score',
-            data: scores,
-            backgroundColor: colors.map(color => color + '88'),
-            borderColor: colors,
+            data: sortedScores,
+            backgroundColor: sortedColors.map(color => color + '88'),
+            borderColor: sortedColors,
             borderWidth: 1,
             borderRadius: 6
           }]
@@ -115,6 +124,7 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          indexAxis: 'y', // Makes it horizontal
           layout: {
             padding: 10
           },
@@ -129,11 +139,19 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
               borderColor: '#2a2a2e',
               borderWidth: 1,
               cornerRadius: 4,
-              padding: 8
+              padding: 8,
+              callbacks: {
+                title: function(context) {
+                  return context[0].label;
+                },
+                label: function(context) {
+                  return `Score: ${context.parsed.x}/100`;
+                }
+              }
             }
           },
           scales: {
-            y: {
+            x: {
               beginAtZero: true,
               max: 100,
               ticks: {
@@ -144,7 +162,7 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
                 color: '#2a2a2e'
               }
             },
-            x: {
+            y: {
               ticks: {
                 color: '#a8a8b3',
                 font: {
@@ -195,8 +213,28 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         <Title order={1} size="h2">Overview</Title>
       </div>
       
-      {/* Primary Metrics Row - First thing users see */}
-      <div className="primary-metrics-row">
+      {/* Overall Score - Highlighted First */}
+      <Card className="overall-score-card" mb="xl" style={{ 
+        background: 'linear-gradient(135deg, rgba(91, 99, 211, 0.1) 0%, rgba(45, 55, 145, 0.1) 100%)',
+        border: '1px solid rgba(91, 99, 211, 0.2)',
+        borderRadius: '12px'
+      }}>
+        <Group justify="center" align="center" style={{ textAlign: 'center' }}>
+          <div>
+            <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Design System Health</Text>
+            <Text size="4rem" fw={700} style={{ lineHeight: 1, color: 'var(--mantine-color-blue-6)' }}>
+              {auditResult.overallScore}
+            </Text>
+            <Text size="lg" c="dimmed" mb="sm">out of 100</Text>
+            <Badge size="xl" color={getGradeColor(auditResult.overallGrade)} variant="filled">
+              Grade {auditResult.overallGrade}
+            </Badge>
+          </div>
+        </Group>
+      </Card>
+
+      {/* Secondary Metrics Row */}
+      <div className="secondary-metrics-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
         <div className="metric-card priority">
           <div className="metric-icon"><AlertTriangle size={24} color="var(--mantine-color-red-6)" /></div>
           <div className="metric-content">
@@ -220,25 +258,16 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
             <Text className="metric-label">Files Analyzed</Text>
           </div>
         </div>
-        
-        <div className="metric-card score">
-          <div className="metric-content">
-            <Text className="metric-value">{auditResult.overallScore}</Text>
-            <Text className="metric-label">Overall Score</Text>
-          </div>
-          <Badge size="sm" color={getGradeColor(auditResult.overallGrade)} variant="light">
-            {auditResult.overallGrade}
-          </Badge>
-        </div>
       </div>
 
-      {/* Charts Section - Directly beneath metrics */}
+      {/* Enhanced Charts Section - Different Data Perspectives */}
       <div className="charts-section">
         <Grid gutter="md">
-          <Grid.Col span={{ base: 12, lg: 8 }}>
+          <Grid.Col span={{ base: 12, lg: 6 }}>
             <Card className="chart-card">
               <div className="chart-header">
-                <Title order={4}>Category Performance</Title>
+                <Title order={4}>Category Rankings</Title>
+                <Text size="xs" c="dimmed">Performance ranked by score</Text>
                 <Button 
                   variant="subtle" 
                   size="xs"
@@ -248,25 +277,26 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
                 </Button>
               </div>
               <div className="chart-container">
-                <canvas ref={radarChartRef}></canvas>
+                <canvas ref={barChartRef}></canvas>
               </div>
             </Card>
           </Grid.Col>
 
-          <Grid.Col span={{ base: 12, lg: 4 }}>
+          <Grid.Col span={{ base: 12, lg: 6 }}>
             <Card className="chart-card">
               <div className="chart-header">
-                <Title order={4}>Score Distribution</Title>
+                <Title order={4}>System Health Overview</Title>
+                <Text size="xs" c="dimmed">Holistic view of all categories</Text>
                 <Button 
                   variant="subtle" 
                   size="xs"
                   onClick={() => window.location.hash = 'categories'}
                 >
-                  View →
+                  Analyze →
                 </Button>
               </div>
-              <div className="chart-container small">
-                <canvas ref={barChartRef}></canvas>
+              <div className="chart-container">
+                <canvas ref={radarChartRef}></canvas>
               </div>
             </Card>
           </Grid.Col>
