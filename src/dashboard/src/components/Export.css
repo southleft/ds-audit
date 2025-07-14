@@ -1,0 +1,39 @@
+.export-container {
+  padding: 1rem;
+}
+
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.export-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  height: fit-content;
+}
+
+.format-description {
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+.quick-link {
+  padding: 1rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-color);
+}
+
+.mantine-Button-root {
+  transition: all 0.2s ease;
+}
+
+.mantine-Button-root:hover {
+  transform: translateY(-1px);
+}

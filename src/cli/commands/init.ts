@@ -5,7 +5,7 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
 import { Logger } from '../../utils/Logger.js';
-import { AuditConfig } from '../../types/index.js';
+import { AuditConfig, AuditResult } from '../../types/index.js';
 import { AuditEngine } from '../../core/AuditEngine.js';
 import { ReportGenerator } from '../../core/ReportGenerator.js';
 import { DashboardServer } from '../../dashboard/DashboardServer.js';
@@ -73,34 +73,105 @@ export async function initCommand(options: any): Promise<void> {
     // Save configuration
     await saveConfiguration(config);
     
+    // Create a placeholder results object for the dashboard
+    const placeholderResults: AuditResult = {
+      timestamp: new Date().toISOString(),
+      projectPath: config.projectPath,
+      overallScore: 0,
+      overallGrade: 'N/A',
+      categories: [],
+      recommendations: [],
+      metadata: {
+        duration: 0,
+        filesScanned: 0,
+        toolsDetected: [],
+        frameworksDetected: [],
+        errors: []
+      }
+    };
+
+    // Start dashboard server first if enabled
+    let dashboard: DashboardServer | null = null;
+    if (config.dashboard.enabled) {
+      logger.info('Starting dashboard server...');
+      dashboard = new DashboardServer(config, placeholderResults);
+      await dashboard.start();
+    }
+
     // Run audit
     logger.startSpinner('Running audit...');
     const engine = new AuditEngine(config);
     
     // Set up progress tracking
+    let totalCategories = Object.values(config.modules).filter(enabled => enabled).length;
+    let completedCategories = 0;
+
+    engine.on('audit:start', () => {
+      if (dashboard) {
+        dashboard.sendProgressUpdate({
+          type: 'audit:start',
+          totalCategories,
+          message: 'Starting design system audit...'
+        });
+      }
+    });
+
     engine.on('category:start', (category) => {
       logger.updateSpinner(`Auditing ${category}...`);
+      if (dashboard) {
+        dashboard.sendProgressUpdate({
+          type: 'category:start',
+          category,
+          progress: Math.round((completedCategories / totalCategories) * 100),
+          message: `Auditing ${category}...`
+        });
+      }
     });
     
     engine.on('category:complete', (category, result) => {
+      completedCategories++;
       logger.updateSpinner(`Completed ${category} (Score: ${result.score})`);
+      if (dashboard) {
+        dashboard.sendProgressUpdate({
+          type: 'category:complete',
+          category,
+          result,
+          progress: Math.round((completedCategories / totalCategories) * 100),
+          message: `Completed ${category} (Score: ${result.score})`
+        });
+      }
+    });
+
+    engine.on('category:error', (category, error) => {
+      completedCategories++;
+      if (dashboard) {
+        dashboard.sendProgressUpdate({
+          type: 'category:error',
+          category,
+          error: error.message,
+          progress: Math.round((completedCategories / totalCategories) * 100)
+        });
+      }
     });
     
     const results = await engine.run();
     logger.stopSpinner();
     logger.success('Audit completed!');
+
+    if (dashboard) {
+      dashboard.sendProgressUpdate({
+        type: 'audit:complete',
+        progress: 100,
+        message: 'Audit completed successfully!'
+      });
+      // Update dashboard with real results
+      dashboard.results = results;
+    }
     
     // Generate reports
     logger.info('Generating reports...');
     const reportGenerator = new ReportGenerator(config);
     await reportGenerator.generate(results);
-    
-    // Start dashboard if enabled
-    if (config.dashboard.enabled) {
-      logger.info('Starting dashboard server...');
-      const dashboard = new DashboardServer(config, results);
-      await dashboard.start();
-    }
     
     // Display summary
     displaySummary(results, logger);

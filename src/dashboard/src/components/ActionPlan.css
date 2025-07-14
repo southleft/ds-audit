@@ -1,0 +1,64 @@
+.action-plan-container {
+  padding: 1rem;
+}
+
+.progress-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.action-items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1rem;
+}
+
+.action-item-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.action-item-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--accent-primary);
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+
+.action-item-card:hover::before {
+  transform: translateX(0);
+}
+
+.action-item-card.completed {
+  opacity: 0.7;
+  background: var(--bg-tertiary);
+}
+
+.action-item-card.completed::after {
+  content: '✓';
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-size: 2rem;
+  color: var(--success);
+  opacity: 0.3;
+}
+
+.empty-state {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 3rem;
+  text-align: center;
+}
+
+.mantine-Checkbox-label {
+  cursor: pointer;
+}

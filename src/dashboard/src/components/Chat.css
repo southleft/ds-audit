@@ -1,0 +1,73 @@
+.chat-container {
+  padding: 1rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.chat-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  height: 600px;
+}
+
+.messages-area {
+  flex: 1;
+  padding: 1rem;
+}
+
+.message {
+  margin-bottom: 1.5rem;
+}
+
+.message.user {
+  margin-left: 20%;
+}
+
+.message.assistant {
+  margin-right: 20%;
+}
+
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.message-content {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  line-height: 1.6;
+}
+
+.message.user .message-content {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent-primary);
+  margin-left: auto;
+}
+
+.message.assistant .message-content {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.input-area {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.suggestions-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.mantine-TextInput-input {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+}
+
+.mantine-TextInput-input:focus {
+  border-color: var(--accent-primary);
+}

@@ -1,0 +1,41 @@
+.progress-container {
+  padding: 1rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.progress-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  min-height: 500px;
+}
+
+.complete-message {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--success);
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mantine-Timeline-item {
+  padding-bottom: 1.5rem;
+}
+
+.mantine-Timeline-itemBullet {
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+}
+
+.mantine-Timeline-item[data-active] .mantine-Timeline-itemBullet {
+  border-color: var(--accent-primary);
+}

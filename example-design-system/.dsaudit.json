@@ -1,5 +1,5 @@
 {
-  "projectPath": "/Users/tjpitre/Sites/dsaudit/example-design-system",
+  "projectPath": ".",
   "outputPath": "./audit",
   "includePatterns": [
     "**/*.{js,jsx,ts,tsx,css,scss,json,md}"
@@ -19,7 +19,8 @@
     "accessibility": true
   },
   "ai": {
-    "enabled": false
+    "enabled": true,
+    "model": "claude-sonnet-4-20250514"
   },
   "dashboard": {
     "enabled": true,

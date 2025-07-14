@@ -69,10 +69,11 @@ const __dirname = path.dirname(__filename);
 
 export class DashboardServer {
   private config: AuditConfig;
-  private results: AuditResult;
+  public results: AuditResult;
   private app: express.Application;
   private logger: Logger;
   private server: any;
+  private progressClients: Set<express.Response> = new Set();
 
   constructor(config: AuditConfig, results: AuditResult) {
     this.config = config;
@@ -80,7 +81,18 @@ export class DashboardServer {
     this.app = express();
     this.logger = new Logger();
     this.setupMiddleware();
-    this.setupRoutes();
+    this.setupRoutes().catch(err => {
+      this.logger.error(`Failed to setup routes: ${err}`);
+    });
+  }
+
+  private async fileExists(path: string): Promise<boolean> {
+    try {
+      await fs.access(path);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private setupMiddleware(): void {
@@ -88,7 +100,7 @@ export class DashboardServer {
     // Serve static files if we add them later
   }
 
-  private setupRoutes(): void {
+  private async setupRoutes(): Promise<void> {
     // API endpoints
     this.app.get('/api/results', (req, res) => {
       res.json(this.results);
@@ -101,6 +113,25 @@ export class DashboardServer {
       });
     });
     
+    // Server-Sent Events endpoint for progress updates
+    this.app.get('/api/progress', (req, res) => {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      
+      // Send initial connection message
+      res.write('data: {"type": "connected"}\n\n');
+      
+      // Add client to the set
+      this.progressClients.add(res);
+      
+      // Remove client on disconnect
+      req.on('close', () => {
+        this.progressClients.delete(res);
+      });
+    });
+
     // Chat API endpoint
     this.app.post('/api/chat', async (req, res) => {
       try {
@@ -132,69 +163,81 @@ export class DashboardServer {
       }
     });
 
-    // Serve static files
-    this.app.get('/dashboard.js', async (req, res) => {
-      try {
-        // Use enhanced dashboard JS
-        const jsPath = path.join(__dirname, 'dashboard-enhanced.js');
-        const js = await fs.readFile(jsPath, 'utf-8');
-        res.type('application/javascript').send(js);
-      } catch (error: any) {
-        this.logger.error(`Error loading dashboard script: ${error.message}`);
-        this.logger.error(`Attempted path: ${path.join(__dirname, 'dashboard.js')}`);
-        res.status(500).send('Error loading dashboard script');
-      }
-    });
-    
-    // Serve new sidebar dashboard JS
-    this.app.get('/dashboard-sidebar.js', async (req, res) => {
-      try {
-        const jsPath = path.join(__dirname, 'dashboard-sidebar.js');
-        const js = await fs.readFile(jsPath, 'utf-8');
-        res.type('application/javascript').send(js);
-      } catch (error: any) {
-        this.logger.error(`Error loading sidebar dashboard script: ${error.message}`);
-        res.status(500).send('Error loading dashboard script');
-      }
-    });
+    // Check if React build exists
+    const reactBuildPath = path.join(__dirname, 'index.html');
+    const useReactApp = await this.fileExists(reactBuildPath);
 
-    // Serve the dashboard HTML
-    this.app.get('/', async (req, res) => {
-      try {
-        // Use new sidebar dashboard template
-        const htmlPath = path.join(__dirname, 'dashboard-sidebar.html');
-        const html = await fs.readFile(htmlPath, 'utf-8');
-        res.send(html);
-      } catch (error: any) {
-        this.logger.error(`Error loading dashboard HTML: ${error.message}`);
-        this.logger.error(`Attempted path: ${path.join(__dirname, 'dashboard-template.html')}`);
-        this.logger.error(`__dirname: ${__dirname}`);
-        
-        // Let's debug what files are actually there
-        try {
-          const files = await fs.readdir(__dirname);
-          this.logger.error(`Files in dashboard directory: ${files.join(', ')}`);
-        } catch (e) {
-          this.logger.error(`Cannot read directory: ${e}`);
+    if (useReactApp) {
+      // Serve React app static files with proper headers
+      this.app.use(express.static(__dirname, {
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.css')) {
+            res.setHeader('Content-Type', 'text/css');
+          } else if (filePath.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript');
+          }
+        }
+      }));
+      
+      // Catch-all for React SPA (must be last after all other routes)
+      this.app.use(async (req, res, next) => {
+        // Skip API routes - they should be handled above
+        if (req.path.startsWith('/api/')) {
+          return next();
         }
         
-        // Send a more helpful error page
-        res.status(500).send(`
-          <html>
-            <body>
-              <h1>Dashboard Loading Error</h1>
-              <p>Unable to load dashboard files.</p>
-              <pre>${error.message}</pre>
-              <p>Debug info:</p>
-              <ul>
-                <li>__dirname: ${__dirname}</li>
-                <li>cwd: ${process.cwd()}</li>
-              </ul>
-            </body>
-          </html>
-        `);
-      }
-    });
+        try {
+          const html = await fs.readFile(reactBuildPath, 'utf-8');
+          res.send(html);
+        } catch (error: any) {
+          this.logger.error(`Error serving React app: ${error.message}`);
+          res.status(500).send('Error loading dashboard');
+        }
+      });
+    } else {
+      // Fall back to legacy dashboard
+      this.app.get('/dashboard.js', async (req, res) => {
+        try {
+          const jsPath = path.join(__dirname, 'dashboard-sidebar.js');
+          const js = await fs.readFile(jsPath, 'utf-8');
+          res.type('application/javascript').send(js);
+        } catch (error: any) {
+          this.logger.error(`Error loading dashboard script: ${error.message}`);
+          res.status(500).send('Error loading dashboard script');
+        }
+      });
+      
+      this.app.get('/dashboard-sidebar.js', async (req, res) => {
+        try {
+          const jsPath = path.join(__dirname, 'dashboard-sidebar.js');
+          const js = await fs.readFile(jsPath, 'utf-8');
+          res.type('application/javascript').send(js);
+        } catch (error: any) {
+          this.logger.error(`Error loading sidebar dashboard script: ${error.message}`);
+          res.status(500).send('Error loading dashboard script');
+        }
+      });
+
+      this.app.get('/', async (req, res) => {
+        try {
+          const htmlPath = path.join(__dirname, 'dashboard-sidebar.html');
+          const html = await fs.readFile(htmlPath, 'utf-8');
+          res.send(html);
+        } catch (error: any) {
+          this.logger.error(`Error loading dashboard HTML: ${error.message}`);
+          res.status(500).send(`
+            <html>
+              <body>
+                <h1>Dashboard Loading Error</h1>
+                <p>Unable to load dashboard files.</p>
+                <pre>${error.message}</pre>
+              </body>
+            </html>
+          `);
+        }
+      });
+    }
   }
 
   async start(): Promise<void> {
@@ -224,6 +267,24 @@ export class DashboardServer {
     if (this.server) {
       this.server.close();
     }
+    // Close all SSE connections
+    this.progressClients.forEach(client => {
+      client.end();
+    });
+    this.progressClients.clear();
+  }
+
+  // Method to send progress updates to all connected clients
+  sendProgressUpdate(data: any): void {
+    const message = `data: ${JSON.stringify(data)}\n\n`;
+    this.progressClients.forEach(client => {
+      try {
+        client.write(message);
+      } catch (error) {
+        // Remove dead connections
+        this.progressClients.delete(client);
+      }
+    });
   }
   
   private generateContextualResponse(message: string, context: any): string {
