@@ -34,7 +34,6 @@
 
 .initiative-card:hover {
   border-color: var(--border-light);
-  transform: translateX(2px);
 }
 
 .impact-card {
@@ -68,11 +67,11 @@
   .action-plan-container {
     padding: 1rem;
   }
-  
+
   .strategic-theme {
     padding: 1rem;
   }
-  
+
   .initiative-card {
     padding: 1rem;
   }
@@ -83,12 +82,12 @@
   .action-plan-container {
     padding: 0.5rem;
   }
-  
+
   .initiative-card {
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  
+
   .strategic-theme {
     break-inside: avoid;
     page-break-inside: avoid;
