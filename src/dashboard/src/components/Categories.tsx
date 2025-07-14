@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Tabs, Card, Title, Text, Badge, Group, Progress, Accordion } from '@mantine/core';
+import { Puzzle, Palette, BookOpen, Clipboard, Wrench, Zap, Accessibility, BarChart3, FileCheck, MapPin } from 'lucide-react';
 import { AuditResult, CategoryResult } from '@types';
 import PaginatedTable from './shared/PaginatedTable';
 import './Categories.css';
@@ -26,19 +27,19 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
   }, [auditResult.categories]);
 
   const getCategoryIcon = (categoryName: string) => {
-    const icons: Record<string, string> = {
-      'Components': '🧩',
-      'Component Library': '🧩',
-      'Tokens': '🎨',
-      'Design Tokens': '🎨',
-      'Documentation': '📚',
-      'Governance': '📋',
-      'Tooling': '🛠️',
-      'Tooling & Infrastructure': '🛠️',
-      'Performance': '⚡',
-      'Accessibility': '♿'
+    const iconMap: Record<string, React.ReactNode> = {
+      'Components': <Puzzle size={16} />,
+      'Component Library': <Puzzle size={16} />,
+      'Tokens': <Palette size={16} />,
+      'Design Tokens': <Palette size={16} />,
+      'Documentation': <BookOpen size={16} />,
+      'Governance': <Clipboard size={16} />,
+      'Tooling': <Wrench size={16} />,
+      'Tooling & Infrastructure': <Wrench size={16} />,
+      'Performance': <Zap size={16} />,
+      'Accessibility': <Accessibility size={16} />
     };
-    return icons[categoryName] || '📊';
+    return iconMap[categoryName] || <BarChart3 size={16} />;
   };
 
   const getScoreColor = (score: number) => {
@@ -267,7 +268,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
           <Group justify="space-between" align="center">
             <div>
               <Group align="center" gap="md">
-                <Text size="2rem">{getCategoryIcon(category.name)}</Text>
+                <div style={{ fontSize: '2rem', display: 'flex', alignItems: 'center' }}>{getCategoryIcon(category.name)}</div>
                 <div>
                   <Title order={3}>{category.name}</Title>
                   <Text c="dimmed" size="sm">{category.description}</Text>
@@ -294,7 +295,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
 
         <Accordion multiple defaultValue={['findings', 'recommendations']} variant="separated">
           <Accordion.Item value="findings">
-            <Accordion.Control icon={<Text>📋</Text>}>
+            <Accordion.Control icon={<FileCheck size={16} />}>
               <Text fw={600}>All Findings ({allFindings.length})</Text>
             </Accordion.Control>
             <Accordion.Panel>
@@ -313,7 +314,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
 
           {recommendations.length > 0 && (
             <Accordion.Item value="recommendations">
-              <Accordion.Control icon={<Text>📌</Text>}>
+              <Accordion.Control icon={<MapPin size={16} />}>
                 <Text fw={600}>Category Recommendations ({recommendations.length})</Text>
               </Accordion.Control>
               <Accordion.Panel>
@@ -332,7 +333,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
 
           {category.metadata && (
             <Accordion.Item value="details">
-              <Accordion.Control icon={<Text>📊</Text>}>
+              <Accordion.Control icon={<BarChart3 size={16} />}>
                 <Text fw={600}>Details & Metrics</Text>
               </Accordion.Control>
               <Accordion.Panel>

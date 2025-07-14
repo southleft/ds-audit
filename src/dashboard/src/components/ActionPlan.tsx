@@ -1,5 +1,6 @@
 import React from 'react';
 import { Title, Card, Badge, Text, Group, Stack } from '@mantine/core';
+import { Building2, Sparkles, FileCheck, Rocket } from 'lucide-react';
 import { AuditResult, CategoryResult } from '@types';
 import './ActionPlan.css';
 
@@ -19,7 +20,7 @@ interface StrategicInitiative {
 interface StrategicTheme {
   theme: string;
   description: string;
-  icon: string;
+  icon: React.ReactNode;
   initiatives: StrategicInitiative[];
 }
 
@@ -124,7 +125,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
       themes.push({
         theme: 'Architecture & Framework Evolution',
         description: 'Strategic improvements to the technical foundation that enable scalability and maintainability',
-        icon: '🏗️',
+        icon: <Building2 size={20} />,
         initiatives: architectureInitiatives
       });
     }
@@ -188,7 +189,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
       themes.push({
         theme: 'Quality & Testing Excellence',
         description: 'Systematic approaches to ensure reliability, accessibility, and maintainability',
-        icon: '✨',
+        icon: <Sparkles size={20} />,
         initiatives: qualityInitiatives
       });
     }
@@ -252,7 +253,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
       themes.push({
         theme: 'Process & Governance',
         description: 'Organizational structures and workflows that ensure sustainable design system growth',
-        icon: '📋',
+        icon: <FileCheck size={20} />,
         initiatives: processInitiatives
       });
     }
@@ -313,7 +314,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
       themes.push({
         theme: 'Innovation & Future-Proofing',
         description: 'Forward-thinking initiatives that position the design system for emerging technologies',
-        icon: '🚀',
+        icon: <Rocket size={20} />,
         initiatives: innovationInitiatives
       });
     }
@@ -358,7 +359,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
         {strategicThemes.map((theme, themeIndex) => (
           <div key={themeIndex} className="strategic-theme">
             <Group gap="md" mb="md">
-              <Text size="xl">{theme.icon}</Text>
+              <div style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center' }}>{theme.icon}</div>
               <div style={{ flex: 1 }}>
                 <Title order={3} mb="xs">{theme.theme}</Title>
                 <Text size="sm" c="dimmed">{theme.description}</Text>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Title, Card, Text, Badge, Timeline as MantineTimeline, Group, Select, Button, ScrollArea } from '@mantine/core';
+import { Search } from 'lucide-react';
 import { AuditResult } from '@types';
 import './Timeline.css';
 
@@ -170,10 +171,10 @@ const Timeline: React.FC<TimelineProps> = ({ auditResult }) => {
     }
   };
 
-  const getTypeIcon = (type: string): string => {
+  const getTypeIcon = (type: string): React.ReactNode => {
     switch (type) {
       case 'start': return '▶';
-      case 'scan': return '🔍';
+      case 'scan': return <Search size={12} />;
       case 'complete': return '✓';
       case 'error': return '✗';
       case 'info': return 'ℹ';

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Title, Badge, Text, Stack, Group, Paper, Divider, Box } from '@mantine/core';
+import { Bot } from 'lucide-react';
 import { AuditResult } from '@types';
 import ExpandableTable from './shared/ExpandableTable';
 
@@ -64,7 +65,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ auditResult }) => {
             <Box>
               <Paper p="sm" withBorder style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-light)' }}>
                 <Group gap="xs">
-                  <Text>🤖</Text>
+                  <Bot size={16} color="var(--mantine-color-violet-6)" />
                   <Text size="xs" c="dimmed">
                     For detailed implementation guidance and code examples, use the "Ask Claude" feature in the AI Analysis section.
                   </Text>

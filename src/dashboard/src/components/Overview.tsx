@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Grid, Card, Text, Title, Group, Badge, Progress, Button } from '@mantine/core';
+import { AlertTriangle, Zap, FileText } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
 import { AuditResult } from '@types';
 import './Overview.css';
@@ -197,7 +198,7 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
       {/* Primary Metrics Row - First thing users see */}
       <div className="primary-metrics-row">
         <div className="metric-card priority">
-          <div className="metric-icon">🚨</div>
+          <div className="metric-icon"><AlertTriangle size={24} color="var(--mantine-color-red-6)" /></div>
           <div className="metric-content">
             <Text className="metric-value">{highPriorityIssues}</Text>
             <Text className="metric-label">High Priority</Text>
@@ -205,7 +206,7 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         </div>
         
         <div className="metric-card quick-wins">
-          <div className="metric-icon">⚡</div>
+          <div className="metric-icon"><Zap size={24} color="var(--mantine-color-yellow-6)" /></div>
           <div className="metric-content">
             <Text className="metric-value">{quickWins}</Text>
             <Text className="metric-label">Quick Wins</Text>
@@ -213,7 +214,7 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         </div>
         
         <div className="metric-card files">
-          <div className="metric-icon">📄</div>
+          <div className="metric-icon"><FileText size={24} color="var(--mantine-color-blue-6)" /></div>
           <div className="metric-content">
             <Text className="metric-value">{auditResult.metadata?.filesScanned || 0}</Text>
             <Text className="metric-label">Files Analyzed</Text>
