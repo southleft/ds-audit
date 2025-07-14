@@ -120,7 +120,7 @@ Feel free to ask me questions like:
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -136,7 +136,11 @@ Feel free to ask me questions like:
 
   return (
     <div className="chat-container">
-      <Title order={2} mb="xl">Chat with Claude</Title>
+      {/* Page Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Insights</Text>
+        <Title order={1} size="h2">Ask Claude</Title>
+      </div>
 
       <Card className="chat-card">
         <ScrollArea h={500} ref={scrollAreaRef} className="messages-area">
@@ -212,7 +216,7 @@ Feel free to ask me questions like:
             placeholder="Ask about your audit results..."
             value={input}
             onChange={(e) => setInput(e.currentTarget.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             disabled={isLoading}
             rightSection={
               <Button

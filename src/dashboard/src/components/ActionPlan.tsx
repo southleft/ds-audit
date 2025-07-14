@@ -335,8 +335,14 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
 
   return (
     <div className="action-plan-container">
+      {/* Page Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Analysis</Text>
+        <Title order={1} size="h2">Action Plan</Title>
+      </div>
+      
       <div className="action-plan-header">
-        <Title order={2} mb="xs">Strategic Action Plan</Title>
+        <Title order={2} mb="xs">Strategic Initiatives</Title>
         <Text c="dimmed" size="sm" mb="md">
           Long-term strategic initiatives to transform your design system (Score: {auditResult.overallScore}/100)
         </Text>

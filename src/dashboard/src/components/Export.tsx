@@ -50,7 +50,11 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
 
   return (
     <div className="export-container">
-      <Title order={2} mb="xl">Export & Download</Title>
+      {/* Page Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Tools</Text>
+        <Title order={1} size="h2">Export</Title>
+      </div>
 
       <div className="export-grid">
         <Card className="export-card">

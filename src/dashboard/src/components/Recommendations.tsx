@@ -220,7 +220,11 @@ const Recommendations: React.FC<RecommendationsProps> = ({ auditResult }) => {
 
   return (
     <div style={{ padding: '1rem' }}>
-      <Title order={2} mb="xl">Recommendations</Title>
+      {/* Page Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Analysis</Text>
+        <Title order={1} size="h2">Recommendations</Title>
+      </div>
       
       <ExpandableTable
         data={transformedRecommendations}

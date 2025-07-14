@@ -191,7 +191,11 @@ const Timeline: React.FC<TimelineProps> = ({ auditResult }) => {
 
   return (
     <div className="timeline-container">
-      <Title order={2} mb="xl">Audit Timeline & Log</Title>
+      {/* Page Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Tools</Text>
+        <Title order={1} size="h2">Timeline</Title>
+      </div>
 
       <Card className="timeline-header" mb="xl">
         <Group justify="space-between" align="center">
