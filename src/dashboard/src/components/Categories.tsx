@@ -354,7 +354,11 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
 
   return (
     <div className="categories-container">
-      <Title order={2} mb="xl">Category Analysis</Title>
+      {/* Page Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Analysis</Text>
+        <Title order={1} size="h2">Categories</Title>
+      </div>
       
       <Tabs value={activeTab} onChange={setActiveTab} variant="pills">
         <Tabs.List mb="xl">

@@ -188,6 +188,12 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
   
   return (
     <div className="overview-container">
+      {/* Page Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Analysis</Text>
+        <Title order={1} size="h2">Overview</Title>
+      </div>
+      
       {/* Primary Metrics Row - First thing users see */}
       <div className="primary-metrics-row">
         <div className="metric-card priority">

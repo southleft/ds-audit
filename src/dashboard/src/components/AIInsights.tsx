@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Title, Card, Text, Alert, List, Badge, Group, Button, Anchor, Stack, Divider } from '@mantine/core';
+import React from 'react';
+import { Title, Paper, Text, Alert, Badge, Group, Stack, Anchor, Divider } from '@mantine/core';
 import { AuditResult } from '@types';
 import './AIInsights.css';
 
@@ -17,113 +17,141 @@ interface DesignSystemInsight {
 }
 
 const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  
   const hasAIInsights = auditResult.aiInsights && Object.keys(auditResult.aiInsights).length > 0;
+  
+  // Generate AI-driven analysis based on audit data
+  const generateAnalysis = (): string => {
+    const criticalCategories = auditResult.categories.filter(c => c.score < 50);
+    const weakCategories = auditResult.categories.filter(c => c.score >= 50 && c.score < 70);
+    const strongCategories = auditResult.categories.filter(c => c.score >= 85);
+    
+    let analysis = `This design system shows `;
+    
+    if (strongCategories.length > 0) {
+      analysis += `strong foundational elements with excellent ${strongCategories.map(c => c.name.toLowerCase()).join(', ')} implementation`;
+      if (criticalCategories.length > 0 || weakCategories.length > 0) {
+        analysis += ', but faces ';
+      }
+    }
+    
+    if (criticalCategories.length > 0) {
+      analysis += `significant challenges in ${criticalCategories.map(c => c.name.toLowerCase()).join(', ')}`;
+      if (weakCategories.length > 0) {
+        analysis += ' and ';
+      }
+    }
+    
+    if (weakCategories.length > 0) {
+      analysis += `areas for improvement in ${weakCategories.map(c => c.name.toLowerCase()).join(', ')}`;
+    }
+    
+    analysis += `. The overall score of ${auditResult.overallScore}/100 indicates `;
+    
+    if (auditResult.overallScore >= 80) {
+      analysis += `a mature design system with strong fundamentals.`;
+    } else if (auditResult.overallScore >= 60) {
+      analysis += `a design system in transition that needs strategic investment in technical infrastructure and quality.`;
+    } else {
+      analysis += `an early-stage design system requiring significant architectural improvements.`;
+    }
+    
+    return analysis;
+  };
   
   // Generate enhanced insights based on audit data
   const generateEnhancedInsights = (): DesignSystemInsight[] => {
     const insights: DesignSystemInsight[] = [];
     
-    // Analyze components
-    const componentsCategory = auditResult.categories.find(cat => cat.name.toLowerCase().includes('component'));
-    if (componentsCategory && componentsCategory.score < 80) {
-      insights.push({
-        title: 'Component Architecture Enhancement',
-        description: `Your component library scores ${componentsCategory.score}/100. Based on industry best practices from Material Design and Carbon Design System, consider implementing consistent component composition patterns, prop interfaces, and documentation standards.`,
-        impact: 'high',
-        category: 'Components',
-        sources: [
-          { name: 'Material Design Components', url: 'https://material.io/components' },
-          { name: 'Carbon Design System', url: 'https://carbondesignsystem.com' }
-        ],
-        pattern: 'Atomic Design Pattern'
-      });
-    }
+    // Analyze each category and generate specific insights
+    auditResult.categories.forEach(category => {
+      if (category.score < 80) {
+        const errorCount = category.findings?.filter(f => f.type === 'error').length || 0;
+        const warningCount = category.findings?.filter(f => f.type === 'warning').length || 0;
+        
+        let insight: DesignSystemInsight = {
+          title: `${category.name} Enhancement Opportunity`,
+          description: `${category.name} scores ${category.score}/100 with ${errorCount} critical issues and ${warningCount} warnings. `,
+          impact: category.score < 50 ? 'high' : category.score < 70 ? 'medium' : 'low',
+          category: category.name,
+          sources: []
+        };
+        
+        // Add category-specific recommendations
+        switch (category.name.toLowerCase()) {
+          case 'component library':
+          case 'components':
+            insight.description += `Focus on establishing consistent component patterns, comprehensive testing, and accessible implementations.`;
+            insight.sources = [
+              { name: 'Component-Driven Development', url: 'https://www.componentdriven.org/' },
+              { name: 'Atomic Design Methodology', url: 'https://atomicdesign.bradfrost.com/' }
+            ];
+            insight.pattern = 'Atomic Design with Composition Patterns';
+            break;
+            
+          case 'design tokens':
+          case 'tokens':
+            insight.description += `Implement a semantic token hierarchy with clear naming conventions and theme support.`;
+            insight.sources = [
+              { name: 'Design Tokens W3C', url: 'https://www.w3.org/community/design-tokens/' },
+              { name: 'Style Dictionary', url: 'https://amzn.github.io/style-dictionary/' }
+            ];
+            insight.pattern = 'Multi-tier Token Architecture';
+            break;
+            
+          case 'documentation':
+            insight.description += `Create comprehensive, interactive documentation with live examples and API references.`;
+            insight.sources = [
+              { name: 'Storybook', url: 'https://storybook.js.org/' },
+              { name: 'Documentation System', url: 'https://documentation.divio.com/' }
+            ];
+            insight.pattern = 'Living Documentation';
+            break;
+            
+          case 'accessibility':
+            insight.description += `Ensure WCAG 2.1 AA compliance with automated testing and keyboard navigation support.`;
+            insight.sources = [
+              { name: 'WCAG Guidelines', url: 'https://www.w3.org/WAI/WCAG21/quickref/' },
+              { name: 'ARIA Practices', url: 'https://www.w3.org/WAI/ARIA/apg/' }
+            ];
+            insight.pattern = 'Accessibility-First Development';
+            break;
+            
+          case 'performance':
+            insight.description += `Optimize bundle sizes, implement code splitting, and establish performance budgets.`;
+            insight.sources = [
+              { name: 'Web Performance', url: 'https://web.dev/performance/' },
+              { name: 'Bundle Optimization', url: 'https://web.dev/reduce-javascript-payloads-with-code-splitting/' }
+            ];
+            insight.pattern = 'Progressive Enhancement';
+            break;
+        }
+        
+        insights.push(insight);
+      }
+    });
     
-    // Analyze tokens
-    const tokensCategory = auditResult.categories.find(cat => cat.name.toLowerCase().includes('token'));
-    if (tokensCategory && tokensCategory.score < 75) {
-      insights.push({
-        title: 'Design Token Strategy',
-        description: `Token implementation could be strengthened (${tokensCategory.score}/100). Leading design systems like Polaris and Atlassian use semantic token hierarchies with tier-based naming conventions for better maintainability and theming support.`,
-        impact: 'high',
-        category: 'Tokens',
-        sources: [
-          { name: 'Shopify Polaris Tokens', url: 'https://polaris.shopify.com/tokens' },
-          { name: 'Atlassian Design Tokens', url: 'https://atlassian.design/foundations/design-tokens' }
-        ],
-        pattern: 'Semantic Token Architecture'
-      });
-    }
-    
-    // Analyze accessibility
-    const a11yCategory = auditResult.categories.find(cat => cat.name.toLowerCase().includes('accessibility'));
-    if (a11yCategory && a11yCategory.score < 85) {
-      insights.push({
-        title: 'Accessibility Excellence',
-        description: `Accessibility implementation shows room for improvement (${a11yCategory.score}/100). Following WCAG 2.1 AA standards and patterns from accessible design systems like Gov.UK and US Web Design System can significantly enhance user experience.`,
-        impact: 'high',
-        category: 'Accessibility',
-        sources: [
-          { name: 'WCAG 2.1 Guidelines', url: 'https://www.w3.org/WAI/WCAG21/quickref/' },
-          { name: 'US Web Design System', url: 'https://designsystem.digital.gov' }
-        ],
-        pattern: 'WCAG 2.1 AA Compliance'
-      });
-    }
-    
-    // Performance insights
-    const perfCategory = auditResult.categories.find(cat => cat.name.toLowerCase().includes('performance'));
-    if (perfCategory && perfCategory.score < 80) {
-      insights.push({
-        title: 'Performance Optimization',
-        description: `Performance metrics indicate optimization opportunities (${perfCategory.score}/100). Consider implementing tree-shaking, code splitting, and optimized component bundling strategies used by systems like Ant Design and Chakra UI.`,
-        impact: 'medium',
-        category: 'Performance',
-        sources: [
-          { name: 'Ant Design Bundle Optimization', url: 'https://ant.design/docs/react/getting-started#Bundle-optimization' },
-          { name: 'Chakra UI Performance', url: 'https://chakra-ui.com/guides/getting-started' }
-        ],
-        pattern: 'Progressive Bundle Loading'
-      });
-    }
-    
-    // Documentation insights
-    const docsCategory = auditResult.categories.find(cat => cat.name.toLowerCase().includes('documentation'));
-    if (docsCategory && docsCategory.score < 75) {
-      insights.push({
-        title: 'Documentation Excellence',
-        description: `Documentation quality could be enhanced (${docsCategory.score}/100). Implement comprehensive examples, API documentation, and interactive playgrounds following patterns from Storybook and Figma design systems.`,
-        impact: 'medium',
-        category: 'Documentation',
-        sources: [
-          { name: 'Storybook Documentation', url: 'https://storybook.js.org/docs' },
-          { name: 'Figma Design System', url: 'https://www.figma.com/design-systems/' }
-        ],
-        pattern: 'Living Documentation'
-      });
-    }
-    
-    return insights;
+    return insights.sort((a, b) => {
+      const impactOrder = { high: 0, medium: 1, low: 2 };
+      return impactOrder[a.impact] - impactOrder[b.impact];
+    });
   };
   
-  const enhancedInsights = generateEnhancedInsights();
-  const categories = ['all', ...new Set(enhancedInsights.map(insight => insight.category))];
-  const filteredInsights = selectedCategory === 'all' 
-    ? enhancedInsights 
-    : enhancedInsights.filter(insight => insight.category === selectedCategory);
+  const analysis = hasAIInsights && auditResult.aiInsights?.summary ? 
+    auditResult.aiInsights.summary : 
+    generateAnalysis();
+    
+  const insights = generateEnhancedInsights();
   
-  if (!hasAIInsights && enhancedInsights.length === 0) {
+  if (!hasAIInsights && insights.length === 0) {
     return (
-      <div className="ai-insights-container">
-        <Title order={2} mb="xl">AI-Powered Insights</Title>
-        <Alert color="blue" title="AI Analysis Configuration" className="config-alert">
+      <div style={{ padding: '1rem' }}>
+        <Title order={2} mb="xl">AI Analysis</Title>
+        <Alert color="blue" title="AI Analysis Configuration">
           <Text mb="md">
             To unlock advanced AI insights with real-time design system analysis, configure your Claude API key in the .dsaudit.json configuration file.
           </Text>
           <Text size="sm" c="dimmed">
-            AI insights provide contextual recommendations, pattern analysis, and industry best practice guidance.
+            AI insights provide contextual recommendations, pattern analysis, and industry best practice guidance powered by the Design Systems MCP.
           </Text>
         </Alert>
       </div>
@@ -131,140 +159,99 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
   }
 
   return (
-    <div className="ai-insights-container">
-      <div className="insights-header">
-        <Title order={2} className="insights-title">🤖 AI-Powered Insights</Title>
-        <Text c="dimmed" size="lg" className="insights-subtitle">
-          Design system analysis powered by industry best practices and MCP integration
-        </Text>
-      </div>
+    <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
+      <Stack gap="xl">
+        <div>
+          <Title order={2} mb="xs">AI Analysis</Title>
+          <Text c="dimmed" size="sm">
+            Design system analysis powered by industry best practices and MCP integration
+          </Text>
+        </div>
 
-      {/* Category Filter */}
-      <div className="category-filter">
-        <Group gap="xs">
-          {categories.map(category => (
-            <Button
-              key={category}
-              size="sm"
-              variant={selectedCategory === category ? 'filled' : 'light'}
-              onClick={() => setSelectedCategory(category)}
-              className="filter-btn"
-            >
-              {category === 'all' ? 'All Insights' : category}
-            </Button>
-          ))}
-        </Group>
-      </div>
-
-      {/* AI Summary Section */}
-      {auditResult.aiInsights?.summary && (
-        <Card className="executive-summary-card">
-          <div className="summary-header">
-            <div className="summary-icon">📊</div>
+        {/* Executive Summary */}
+        <Paper p="lg" withBorder style={{ backgroundColor: 'var(--bg-secondary)' }}>
+          <Stack gap="md">
             <div>
-              <Title order={3}>Executive Summary</Title>
+              <Title order={3} size="h4">Executive Summary</Title>
               <Text size="sm" c="dimmed">AI-generated analysis of your design system health</Text>
             </div>
-          </div>
-          <Text className="summary-content">{auditResult.aiInsights.summary}</Text>
-        </Card>
-      )}
+            <Text style={{ lineHeight: 1.6 }}>{analysis}</Text>
+          </Stack>
+        </Paper>
 
-      {/* Enhanced Insights Grid */}
-      <div className="insights-grid">
-        {filteredInsights.map((insight, idx) => (
-          <Card key={idx} className={`insight-detail-card impact-${insight.impact}`}>
-            <div className="insight-header">
-              <Badge 
-                color={insight.impact === 'high' ? 'red' : insight.impact === 'medium' ? 'orange' : 'blue'}
-                size="sm"
-                className="impact-badge"
-              >
-                {insight.impact.toUpperCase()} IMPACT
-              </Badge>
-              <Badge variant="light" size="sm">{insight.category}</Badge>
+        {/* Key Insights */}
+        {insights.length > 0 && (
+          <>
+            <div>
+              <Title order={3} size="h4" mb="sm">Key Insights & Recommendations</Title>
+              <Text size="sm" c="dimmed">Priority areas for design system improvement</Text>
             </div>
             
-            <Title order={4} className="insight-title">{insight.title}</Title>
-            <Text className="insight-description">{insight.description}</Text>
-            
-            {insight.pattern && (
-              <div className="pattern-info">
-                <Text size="sm" fw={600} c="blue">📐 Recommended Pattern:</Text>
-                <Text size="sm" c="dimmed">{insight.pattern}</Text>
-              </div>
-            )}
-            
-            {insight.sources && insight.sources.length > 0 && (
-              <div className="sources-section">
-                <Text size="sm" fw={600} mb="xs">📚 References:</Text>
-                <Stack gap="xs">
-                  {insight.sources.map((source, sourceIdx) => (
-                    <Anchor 
-                      key={sourceIdx} 
-                      href={source.url} 
-                      target="_blank"
-                      size="sm"
-                      className="source-link"
-                    >
-                      {source.name} ↗
-                    </Anchor>
-                  ))}
-                </Stack>
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
+            <Stack gap="md">
+              {insights.map((insight, idx) => (
+                <Paper key={idx} p="md" withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="flex-start">
+                      <Title order={4} size="h5">{insight.title}</Title>
+                      <Group gap="xs">
+                        <Badge 
+                          color={insight.impact === 'high' ? 'red' : insight.impact === 'medium' ? 'orange' : 'blue'}
+                          size="sm"
+                        >
+                          {insight.impact.toUpperCase()} IMPACT
+                        </Badge>
+                        <Badge variant="light" size="sm">{insight.category}</Badge>
+                      </Group>
+                    </Group>
+                    
+                    <Text size="sm" style={{ lineHeight: 1.6 }}>{insight.description}</Text>
+                    
+                    {insight.pattern && (
+                      <Paper p="sm" withBorder style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                        <Group gap="xs">
+                          <Text size="sm" fw={600}>Recommended Pattern:</Text>
+                          <Text size="sm" c="dimmed">{insight.pattern}</Text>
+                        </Group>
+                      </Paper>
+                    )}
+                    
+                    {insight.sources && insight.sources.length > 0 && (
+                      <>
+                        <Divider />
+                        <div>
+                          <Text size="sm" fw={600} mb="xs">References:</Text>
+                          <Group gap="md">
+                            {insight.sources.map((source, sourceIdx) => (
+                              <Anchor 
+                                key={sourceIdx} 
+                                href={source.url} 
+                                target="_blank"
+                                size="sm"
+                                style={{ color: 'var(--accent-primary)' }}
+                              >
+                                {source.name} ↗
+                              </Anchor>
+                            ))}
+                          </Group>
+                        </div>
+                      </>
+                    )}
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          </>
+        )}
 
-      {/* Pattern Analysis */}
-      {auditResult.aiInsights?.patterns && (
-        <Card className="patterns-card">
-          <Title order={3} mb="md">🎯 Detected Patterns</Title>
-          <Text size="sm" c="dimmed" mb="lg">Common patterns and anti-patterns identified in your design system</Text>
-          <div className="patterns-grid">
-            {auditResult.aiInsights.patterns.map((pattern: string, idx: number) => (
-              <div key={idx} className="pattern-item">
-                <Text size="sm">{pattern}</Text>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Strategic Recommendations */}
-      {auditResult.aiInsights?.suggestions && (
-        <Card className="strategic-recommendations-card">
-          <Title order={3} mb="md">🎯 Strategic Recommendations</Title>
-          <Text size="sm" c="dimmed" mb="lg">Priority actions for design system maturity</Text>
-          <div className="recommendations-list">
-            {auditResult.aiInsights.suggestions.map((suggestion: any, idx: number) => (
-              <div key={idx} className="recommendation-item">
-                <div className="recommendation-header">
-                  <Badge color="violet" size="sm">{suggestion.category}</Badge>
-                  <Text fw={600} className="recommendation-title">{suggestion.title}</Text>
-                </div>
-                <Text size="sm" c="dimmed" className="recommendation-description">
-                  {suggestion.description}
-                </Text>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* MCP Integration Footer */}
-      <Card className="mcp-info-card">
-        <Group>
-          <div className="mcp-icon">🔌</div>
-          <div>
-            <Text fw={600} size="sm">Enhanced with Design Systems MCP</Text>
+        {/* MCP Integration Notice */}
+        <Paper p="sm" withBorder style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-light)' }}>
+          <Group gap="xs">
             <Text size="xs" c="dimmed">
-              Insights powered by Model Context Protocol integration with leading design system knowledge bases
+              Enhanced with Design Systems MCP - Insights powered by Model Context Protocol integration
             </Text>
-          </div>
-        </Group>
-      </Card>
+          </Group>
+        </Paper>
+      </Stack>
     </div>
   );
 };

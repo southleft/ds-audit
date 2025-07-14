@@ -1,7 +1,17 @@
 import React from 'react';
-import { NavLink, Group, Text, Badge, Button } from '@mantine/core';
+import { NavLink, Group, Text, Badge, Anchor } from '@mantine/core';
 import { AuditResult } from '@types';
-import { exportToPDF } from '../utils/pdfExport';
+import { 
+  BarChart3, 
+  FolderOpen, 
+  CheckSquare, 
+  Lightbulb, 
+  BrainCircuit, 
+  MessagesSquare, 
+  Activity, 
+  Clock, 
+  Download
+} from 'lucide-react';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -11,32 +21,34 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, auditResult }) => {
+  // Extract design system name from project path
+  const projectName = auditResult?.projectPath ? 
+    auditResult.projectPath.split('/').pop() || 'Design System' : 
+    'Design System';
+
   const navItems = [
     {
       group: 'Analysis',
-      icon: '📊',
       items: [
-        { id: 'overview', label: 'Overview', icon: '🏠', badge: auditResult?.overallGrade },
-        { id: 'categories', label: 'Categories', icon: '📂', badge: `${auditResult?.categories.length || 0}` },
-        { id: 'action-plan', label: 'Action Plan', icon: '✅' },
-        { id: 'recommendations', label: 'Recommendations', icon: '💡' },
+        { id: 'overview', label: 'Overview', icon: BarChart3, badge: auditResult?.overallGrade },
+        { id: 'categories', label: 'Categories', icon: FolderOpen, badge: `${auditResult?.categories.length || 0}` },
+        { id: 'action-plan', label: 'Action Plan', icon: CheckSquare },
+        { id: 'recommendations', label: 'Recommendations', icon: Lightbulb },
       ],
     },
     {
       group: 'Insights',
-      icon: '🧠',
       items: [
-        { id: 'ai-insights', label: 'AI Analysis', icon: '🤖' },
-        { id: 'chat', label: 'Ask Claude', icon: '💬' },
+        { id: 'ai-insights', label: 'AI Analysis', icon: BrainCircuit },
+        { id: 'chat', label: 'Ask Claude', icon: MessagesSquare },
       ],
     },
     {
       group: 'Tools',
-      icon: '⚙️',
       items: [
-        { id: 'progress', label: 'Live Progress', icon: '📈' },
-        { id: 'timeline', label: 'Timeline', icon: '📅' },
-        { id: 'export', label: 'Export', icon: '📥' },
+        { id: 'progress', label: 'Live Progress', icon: Activity },
+        { id: 'timeline', label: 'Timeline', icon: Clock },
+        { id: 'export', label: 'Export', icon: Download },
       ],
     },
   ];
@@ -45,26 +57,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, audi
     <div className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <span className="logo-icon">🔍</span>
           <h2>DSAudit</h2>
+          <Text size="sm" c="dimmed" fw={500}>
+            {projectName}
+          </Text>
         </div>
-        {auditResult && (
-          <div className="audit-info">
-            <Text size="xs" c="dimmed" fw={500}>
-              Last audit
-            </Text>
-            <Text size="xs" c="dimmed">
-              {new Date(auditResult.timestamp).toLocaleDateString()}
-            </Text>
-          </div>
-        )}
       </div>
 
       <div className="nav-sections">
         {navItems.map((group) => (
           <div key={group.group} className="nav-group">
             <div className="nav-group-header">
-              <span className="group-icon">{group.icon}</span>
               <Text className="nav-group-title" size="xs" fw={600}>
                 {group.group}
               </Text>
@@ -75,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, audi
                 active={currentSection === item.id}
                 label={
                   <Group gap="xs">
-                    <span className="nav-icon">{item.icon}</span>
+                    <item.icon size={16} className="nav-icon" />
                     <span className="nav-label">{item.label}</span>
                     {item.badge && (
                       <Badge size="xs" variant="light" className="nav-badge">
@@ -95,20 +98,31 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, audi
         ))}
       </div>
 
-      {auditResult && (
-        <div className="sidebar-footer">
-          <Button
-            variant="light"
-            size="xs"
-            onClick={() => exportToPDF(auditResult)}
-            className="export-button"
-            fullWidth
-          >
-            <span style={{ marginRight: '0.5rem' }}>📄</span>
-            Export PDF Report
-          </Button>
+      <div className="sidebar-footer">
+        {auditResult && (
+          <div className="audit-info">
+            <Text size="xs" c="dimmed" fw={500}>
+              Last audit
+            </Text>
+            <Text size="xs" c="dimmed">
+              {new Date(auditResult.timestamp).toLocaleDateString()}
+            </Text>
+          </div>
+        )}
+        <div className="footer-link">
+          <Text size="xs" c="dimmed">
+            Made by{' '}
+            <Anchor 
+              href="https://southleft.com" 
+              target="_blank" 
+              size="xs"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Southleft
+            </Anchor>
+          </Text>
         </div>
-      )}
+      </div>
     </div>
   );
 };

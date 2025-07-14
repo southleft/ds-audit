@@ -102,7 +102,6 @@ function App() {
 
   return (
     <AppShell
-      header={{ height: 60 }}
       navbar={{
         width: 280,
         breakpoint: 'sm',
@@ -110,25 +109,6 @@ function App() {
       }}
       padding="md"
     >
-      <AppShell.Header>
-        <div className="header">
-          <Burger
-            opened={opened}
-            onClick={toggle}
-            hiddenFrom="sm"
-            size="sm"
-          />
-          <h1>Design System Audit Dashboard</h1>
-          {auditResult && (
-            <div className="header-score">
-              <div className="score-display">
-                <span className="score-number">{auditResult.overallScore}</span>
-                <span className="score-grade">Grade {auditResult.overallGrade}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </AppShell.Header>
 
       <AppShell.Navbar>
         <Sidebar 
@@ -139,7 +119,9 @@ function App() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        {renderSection()}
+        <div className="main-content">
+          {renderSection()}
+        </div>
       </AppShell.Main>
     </AppShell>
   );

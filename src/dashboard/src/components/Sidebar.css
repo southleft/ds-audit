@@ -128,6 +128,15 @@
 .sidebar-footer {
   padding: 0.75rem;
   border-top: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.footer-link {
+  text-align: center;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
 }
 
 .export-button {

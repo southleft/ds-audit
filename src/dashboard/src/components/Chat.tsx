@@ -216,14 +216,14 @@ Feel free to ask me questions like:
             disabled={isLoading}
             rightSection={
               <Button
-                size="sm"
+                size="xs"
                 onClick={handleSend}
                 disabled={!input.trim() || isLoading}
               >
                 Send
               </Button>
             }
-            rightSectionWidth={80}
+            rightSectionWidth={70}
           />
         </div>
       </Card>
