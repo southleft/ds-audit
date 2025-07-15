@@ -18,35 +18,35 @@ interface DesignSystemInsight {
 
 const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
   const hasAIInsights = auditResult.aiInsights && Object.keys(auditResult.aiInsights).length > 0;
-  
+
   // Generate AI-driven analysis based on audit data
   const generateAnalysis = (): string => {
     const criticalCategories = auditResult.categories.filter(c => c.score < 50);
     const weakCategories = auditResult.categories.filter(c => c.score >= 50 && c.score < 70);
     const strongCategories = auditResult.categories.filter(c => c.score >= 85);
-    
+
     let analysis = `This design system shows `;
-    
+
     if (strongCategories.length > 0) {
       analysis += `strong foundational elements with excellent ${strongCategories.map(c => c.name.toLowerCase()).join(', ')} implementation`;
       if (criticalCategories.length > 0 || weakCategories.length > 0) {
         analysis += ', but faces ';
       }
     }
-    
+
     if (criticalCategories.length > 0) {
       analysis += `significant challenges in ${criticalCategories.map(c => c.name.toLowerCase()).join(', ')}`;
       if (weakCategories.length > 0) {
         analysis += ' and ';
       }
     }
-    
+
     if (weakCategories.length > 0) {
       analysis += `areas for improvement in ${weakCategories.map(c => c.name.toLowerCase()).join(', ')}`;
     }
-    
+
     analysis += `. The overall score of ${auditResult.overallScore}/100 indicates `;
-    
+
     if (auditResult.overallScore >= 80) {
       analysis += `a mature design system with strong fundamentals.`;
     } else if (auditResult.overallScore >= 60) {
@@ -54,20 +54,20 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
     } else {
       analysis += `an early-stage design system requiring significant architectural improvements.`;
     }
-    
+
     return analysis;
   };
-  
+
   // Generate enhanced insights based on audit data
   const generateEnhancedInsights = (): DesignSystemInsight[] => {
     const insights: DesignSystemInsight[] = [];
-    
+
     // Analyze each category and generate specific insights
     auditResult.categories.forEach(category => {
       if (category.score < 80) {
         const errorCount = category.findings?.filter(f => f.type === 'error').length || 0;
         const warningCount = category.findings?.filter(f => f.type === 'warning').length || 0;
-        
+
         let insight: DesignSystemInsight = {
           title: `${category.name} Enhancement Opportunity`,
           description: `${category.name} scores ${category.score}/100 with ${errorCount} critical issues and ${warningCount} warnings. `,
@@ -75,7 +75,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
           category: category.name,
           sources: []
         };
-        
+
         // Add category-specific recommendations
         switch (category.name.toLowerCase()) {
           case 'component library':
@@ -87,7 +87,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
             ];
             insight.pattern = 'Atomic Design with Composition Patterns';
             break;
-            
+
           case 'design tokens':
           case 'tokens':
             insight.description += `Implement a semantic token hierarchy with clear naming conventions and theme support.`;
@@ -97,7 +97,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
             ];
             insight.pattern = 'Multi-tier Token Architecture';
             break;
-            
+
           case 'documentation':
             insight.description += `Create comprehensive, interactive documentation with live examples and API references.`;
             insight.sources = [
@@ -106,7 +106,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
             ];
             insight.pattern = 'Living Documentation';
             break;
-            
+
           case 'accessibility':
             insight.description += `Ensure WCAG 2.1 AA compliance with automated testing and keyboard navigation support.`;
             insight.sources = [
@@ -115,7 +115,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
             ];
             insight.pattern = 'Accessibility-First Development';
             break;
-            
+
           case 'performance':
             insight.description += `Optimize bundle sizes, implement code splitting, and establish performance budgets.`;
             insight.sources = [
@@ -125,23 +125,23 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
             insight.pattern = 'Progressive Enhancement';
             break;
         }
-        
+
         insights.push(insight);
       }
     });
-    
+
     return insights.sort((a, b) => {
       const impactOrder = { high: 0, medium: 1, low: 2 };
       return impactOrder[a.impact] - impactOrder[b.impact];
     });
   };
-  
-  const analysis = hasAIInsights && auditResult.aiInsights?.summary ? 
-    auditResult.aiInsights.summary : 
+
+  const analysis = hasAIInsights && auditResult.aiInsights?.summary ?
+    auditResult.aiInsights.summary :
     generateAnalysis();
-    
+
   const insights = generateEnhancedInsights();
-  
+
   if (!hasAIInsights && insights.length === 0) {
     return (
       <div style={{ padding: '1rem' }}>
@@ -162,6 +162,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       <Stack gap="xl">
         <div>
+          <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Insights</Text>
           <Title order={2} mb="xs">AI Analysis</Title>
           <Text c="dimmed" size="sm">
             Design system analysis powered by industry best practices and MCP integration
@@ -186,7 +187,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
               <Title order={3} size="h4" mb="sm">Key Insights & Recommendations</Title>
               <Text size="sm" c="dimmed">Priority areas for design system improvement</Text>
             </div>
-            
+
             <Stack gap="md">
               {insights.map((insight, idx) => (
                 <Paper key={idx} p="md" withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
@@ -194,7 +195,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
                     <Group justify="space-between" align="flex-start">
                       <Title order={4} size="h5">{insight.title}</Title>
                       <Group gap="xs">
-                        <Badge 
+                        <Badge
                           color={insight.impact === 'high' ? 'red' : insight.impact === 'medium' ? 'orange' : 'blue'}
                           size="sm"
                         >
@@ -203,9 +204,9 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
                         <Badge variant="light" size="sm">{insight.category}</Badge>
                       </Group>
                     </Group>
-                    
+
                     <Text size="sm" style={{ lineHeight: 1.6 }}>{insight.description}</Text>
-                    
+
                     {insight.pattern && (
                       <Paper p="sm" withBorder style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                         <Group gap="xs">
@@ -214,7 +215,7 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
                         </Group>
                       </Paper>
                     )}
-                    
+
                     {insight.sources && insight.sources.length > 0 && (
                       <>
                         <Divider />
@@ -222,9 +223,9 @@ const AIInsights: React.FC<AIInsightsProps> = ({ auditResult }) => {
                           <Text size="sm" fw={600} mb="xs">References:</Text>
                           <Group gap="md">
                             {insight.sources.map((source, sourceIdx) => (
-                              <Anchor 
-                                key={sourceIdx} 
-                                href={source.url} 
+                              <Anchor
+                                key={sourceIdx}
+                                href={source.url}
                                 target="_blank"
                                 size="sm"
                                 style={{ color: 'var(--accent-primary)' }}

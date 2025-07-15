@@ -66,6 +66,7 @@
 .mantine-TextInput-input {
   background: var(--bg-tertiary);
   border-color: var(--border-color);
+  min-height: 42px;
 }
 
 .mantine-TextInput-input:focus {

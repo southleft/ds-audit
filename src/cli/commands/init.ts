@@ -96,8 +96,52 @@ export async function initCommand(options: any): Promise<void> {
       logger.info('Starting dashboard server...');
       dashboard = new DashboardServer(config, placeholderResults);
       await dashboard.start();
+      // Open dashboard to progress page for live monitoring
+      if (config.dashboard.autoOpen) {
+        const { exec } = await import('child_process');
+        const start = process.platform === 'darwin' ? 'open' : 
+                      process.platform === 'win32' ? 'start' : 'xdg-open';
+        // Add delay to ensure server is ready
+        setTimeout(() => {
+          exec(`${start} http://localhost:${config.dashboard.port}/#progress`);
+        }, 1000);
+      }
+      
+      // Wait for dashboard to connect before starting audit
+      if (dashboard) {
+        logger.info('Waiting for dashboard connection...');
+        await new Promise(resolve => {
+          const dashboardRef = dashboard!; // We know it's not null here
+          const checkConnection = setInterval(() => {
+            if (dashboardRef.progressClients.size > 0) {
+              clearInterval(checkConnection);
+              logger.info('Dashboard connected!');
+              resolve(undefined);
+            }
+          }, 100);
+          
+          // Timeout after 10 seconds and continue anyway
+          setTimeout(() => {
+            clearInterval(checkConnection);
+            logger.warn('Dashboard connection timeout, continuing anyway');
+            resolve(undefined);
+          }, 10000);
+        });
+      }
     }
 
+    // Clear any old audit results before starting
+    try {
+      const auditDir = path.join(config.projectPath, config.outputPath);
+      const resultsPath = path.join(auditDir, 'results.json');
+      if (await fs.access(resultsPath).then(() => true).catch(() => false)) {
+        await fs.unlink(resultsPath);
+        logger.info('Cleared previous audit results');
+      }
+    } catch (error) {
+      // Ignore errors, just continue
+    }
+    
     // Run audit
     logger.startSpinner('Running audit...');
     const engine = new AuditEngine(config);
@@ -108,6 +152,22 @@ export async function initCommand(options: any): Promise<void> {
 
     engine.on('audit:start', () => {
       if (dashboard) {
+        // Clear old results when starting new audit
+        dashboard.results = {
+          timestamp: new Date().toISOString(),
+          projectPath: config.projectPath,
+          overallScore: 0,
+          overallGrade: 'N/A',
+          categories: [],
+          recommendations: [],
+          metadata: {
+            duration: 0,
+            filesScanned: 0,
+            toolsDetected: [],
+            frameworksDetected: [],
+            errors: []
+          }
+        };
         dashboard.sendProgressUpdate({
           type: 'audit:start',
           totalCategories,

@@ -13,13 +13,17 @@ export class GovernanceAuditor {
   async audit(): Promise<CategoryResult> {
     const findings: Finding[] = [];
     
-    // Check for governance files
+    // Check for governance files in multiple locations
     const governanceFiles = [
       { file: 'CONTRIBUTING.md', name: 'Contributing Guidelines' },
       { file: 'CODE_OF_CONDUCT.md', name: 'Code of Conduct' },
       { file: 'GOVERNANCE.md', name: 'Governance Model' },
       { file: '.github/PULL_REQUEST_TEMPLATE.md', name: 'PR Template' },
       { file: '.github/ISSUE_TEMPLATE', name: 'Issue Templates' },
+      // Also check in docs directory
+      { file: 'docs/contributing.md', name: 'Contributing Guidelines (docs)' },
+      { file: 'docs/governance.md', name: 'Governance Model (docs)' },
+      { file: 'docs/guidelines.md', name: 'Guidelines (docs)' },
     ];
 
     let foundFiles = 0;
@@ -84,8 +88,11 @@ export class GovernanceAuditor {
   }
 
   private calculateScore(found: number, total: number): number {
+    // More generous scoring - if you have at least some governance docs, get partial credit
     const baseScore = (found / total) * 100;
-    return Math.round(baseScore);
+    // Bonus for having any governance documentation at all
+    const bonus = found > 0 ? 10 : 0;
+    return Math.min(100, Math.round(baseScore + bonus));
   }
 
   private getGrade(score: number): string {

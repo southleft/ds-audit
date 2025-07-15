@@ -27,6 +27,12 @@ function App() {
 
   useEffect(() => {
     loadAuditResults();
+  }, []); // Only load once on mount
+  
+  // Handle section-specific behavior in a separate effect
+  useEffect(() => {
+    // Don't refresh data automatically - it causes disconnections
+    // Users can manually refresh if needed
     
     // Handle hash-based navigation
     const handleHashChange = () => {
@@ -72,8 +78,19 @@ function App() {
   const loadAuditResults = async () => {
     try {
       setLoading(true);
-      const results = await fetchAuditResults();
-      setAuditResult(results);
+      // Always fetch fresh results with cache-busting
+      const response = await fetch(`/api/results?t=${Date.now()}`, {
+        cache: 'no-cache',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch audit results');
+      }
+      const freshResults = await response.json();
+      setAuditResult(freshResults);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load audit results');
     } finally {

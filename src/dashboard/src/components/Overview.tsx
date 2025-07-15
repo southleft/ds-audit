@@ -24,7 +24,7 @@ const CircularScoreIndicator: React.FC<{
   description?: string;
 }> = ({ score, label, description }) => {
   const color = getColorForScore(score);
-  const circumference = 2 * Math.PI * 36; // radius = 36
+  const circumference = 2 * Math.PI * 49; // radius = 49 (35% bigger)
   const strokeDasharray = `${(score / 100) * circumference} ${circumference}`;
 
   return (
@@ -36,27 +36,27 @@ const CircularScoreIndicator: React.FC<{
       flex: 1
     }}>
       <div style={{ position: 'relative', marginBottom: '1rem' }}>
-        <svg width="96" height="96" viewBox="0 0 96 96">
+        <svg width="130" height="130" viewBox="0 0 130 130">
           {/* Background circle */}
           <circle
-            cx="48"
-            cy="48"
-            r="36"
+            cx="65"
+            cy="65"
+            r="49"
             fill="none"
             stroke="#44444d"
-            strokeWidth="3"
+            strokeWidth="4"
           />
           {/* Score circle */}
           <circle
-            cx="48"
-            cy="48"
-            r="36"
+            cx="65"
+            cy="65"
+            r="49"
             fill="none"
             stroke={color}
-            strokeWidth="3"
+            strokeWidth="4"
             strokeDasharray={strokeDasharray}
             strokeLinecap="round"
-            transform="rotate(-90 48 48)"
+            transform="rotate(-90 65 65)"
             style={{ transition: 'stroke-dasharray 0.5s ease' }}
           />
         </svg>
@@ -65,7 +65,7 @@ const CircularScoreIndicator: React.FC<{
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          fontSize: '1.75rem',
+          fontSize: '2.36rem',
           fontWeight: 700,
           color: color
         }}>
@@ -287,7 +287,7 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
 
   // Calculate rolled-up scores for the 4 main indicators
   const calculateComponentHealth = () => {
-    const componentCat = auditResult.categories.find(c => c.name === 'Components');
+    const componentCat = auditResult.categories.find(c => c.name === 'Component Library');
     const accessibilityCat = auditResult.categories.find(c => c.name === 'Accessibility');
     if (!componentCat && !accessibilityCat) return 0;
     
@@ -298,7 +298,7 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
   };
 
   const calculateTokenArchitecture = () => {
-    const tokenCat = auditResult.categories.find(c => c.name === 'Tokens');
+    const tokenCat = auditResult.categories.find(c => c.name === 'Design Tokens');
     return tokenCat?.score || 0;
   };
 
@@ -372,43 +372,81 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         <Title order={1} size="h2">Overview</Title>
       </div>
       
-      {/* Lighthouse-style 4 circular indicators */}
-      <Card style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-color)',
-        borderRadius: '8px',
-        padding: '2rem',
-        marginBottom: '2rem'
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-around',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem'
-        }}>
-          <CircularScoreIndicator 
-            score={auditResult.overallScore}
-            label="Design System Health"
-            description="Overall weighted score"
-          />
-          <CircularScoreIndicator 
-            score={componentHealthScore}
-            label="Component Health"
-            description="Component coverage & a11y"
-          />
-          <CircularScoreIndicator 
-            score={tokenArchitectureScore}
-            label="Token Architecture"
-            description="Design token structure"
-          />
-          <CircularScoreIndicator 
-            score={docGovernanceScore}
-            label="Documentation & Governance"
-            description="Docs coverage & versioning"
-          />
-        </div>
-      </Card>
+      {/* Lighthouse-style 4 circular indicators in grid */}
+      <Grid gutter="md" style={{ marginBottom: '2rem' }}>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            padding: '1.5rem',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <CircularScoreIndicator 
+              score={auditResult.overallScore}
+              label="Design System Health"
+              description="Overall weighted score"
+            />
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            padding: '1.5rem',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <CircularScoreIndicator 
+              score={componentHealthScore}
+              label="Component Health"
+              description="Component coverage & a11y"
+            />
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            padding: '1.5rem',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <CircularScoreIndicator 
+              score={tokenArchitectureScore}
+              label="Token Architecture"
+              description="Design token structure"
+            />
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+          <Card style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            padding: '1.5rem',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <CircularScoreIndicator 
+              score={docGovernanceScore}
+              label="Documentation & Governance"
+              description="Docs coverage & versioning"
+            />
+          </Card>
+        </Grid.Col>
+      </Grid>
 
       {/* Charts Section */}
       <div className="charts-section">

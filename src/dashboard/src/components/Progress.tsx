@@ -13,8 +13,19 @@ interface ProgressProps {
 }
 
 const Progress: React.FC<ProgressProps> = ({ auditResult }) => {
-  const { isConnected, progress, currentCategory, message, categoryResults, isComplete } = useProgress();
+  const { isConnected, progress, currentCategory, message, categoryResults, isComplete, lastAuditTime, isAuditActive } = useProgress();
   const [isStartingAudit, setIsStartingAudit] = useState(false);
+  
+  // Debug logging
+  React.useEffect(() => {
+    console.log('[Progress Component] State:', {
+      isAuditActive,
+      progress,
+      currentCategory,
+      categoryResultsCount: Object.keys(categoryResults).length,
+      isComplete
+    });
+  }, [isAuditActive, progress, currentCategory, categoryResults, isComplete]);
 
   const getCategoryIcon = (status?: 'complete' | 'error' | 'in-progress') => {
     switch (status) {
@@ -39,7 +50,12 @@ const Progress: React.FC<ProgressProps> = ({ auditResult }) => {
     'accessibility'
   ];
 
-  const hasActiveAudit = progress > 0 || currentCategory || Object.keys(categoryResults).length > 0;
+  // Check URL hash to see if we just started an audit
+  const isAuditStarting = window.location.hash === '#progress' && 
+    (!auditResult || new Date().getTime() - new Date(auditResult.timestamp).getTime() > 60000);
+  
+  // Use the explicit audit active state from SSE events or if we're just starting
+  const hasActiveAudit = isAuditActive || isAuditStarting || progress > 0 || currentCategory || Object.keys(categoryResults).length > 0;
 
   const startNewAudit = async () => {
     setIsStartingAudit(true);
@@ -100,7 +116,14 @@ const Progress: React.FC<ProgressProps> = ({ auditResult }) => {
         </Card>
 
         {/* Progress Section */}
-        {hasActiveAudit ? (
+        {!isConnected ? (
+          <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
+            <Stack gap="md" align="center">
+              <Loader size="lg" />
+              <Text>Connecting to audit server...</Text>
+            </Stack>
+          </Card>
+        ) : hasActiveAudit ? (
           <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
             <Stack gap="lg">
               <div>

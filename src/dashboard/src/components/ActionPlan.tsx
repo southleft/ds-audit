@@ -28,7 +28,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
   // Analyze audit results to generate strategic long-term goals
   const generateStrategicThemes = (): StrategicTheme[] => {
     const themes: StrategicTheme[] = [];
-    
+
     // Categorize by severity
     const criticalCategories = auditResult.categories.filter(c => c.score < 50);
     const needsImprovementCategories = auditResult.categories.filter(c => c.score >= 50 && c.score < 70);
@@ -39,34 +39,34 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
     const allFindings = auditResult.categories.flatMap(c => c.findings || []);
     const errorCount = allFindings.filter(f => f.type === 'error').length;
     const warningCount = allFindings.filter(f => f.type === 'warning').length;
-    
+
     // Pattern detection
-    const hasTestingIssues = allFindings.filter(f => 
-      f.message.toLowerCase().includes('test') || 
+    const hasTestingIssues = allFindings.filter(f =>
+      f.message.toLowerCase().includes('test') ||
       f.message.toLowerCase().includes('spec')
     ).length > 10;
-    
-    const hasDocumentationIssues = allFindings.filter(f => 
-      f.message.toLowerCase().includes('documentation') || 
+
+    const hasDocumentationIssues = allFindings.filter(f =>
+      f.message.toLowerCase().includes('documentation') ||
       f.message.toLowerCase().includes('readme') ||
       f.message.toLowerCase().includes('storybook')
     ).length > 20;
-    
-    const hasAccessibilityIssues = allFindings.filter(f => 
-      f.message.toLowerCase().includes('aria') || 
+
+    const hasAccessibilityIssues = allFindings.filter(f =>
+      f.message.toLowerCase().includes('aria') ||
       f.message.toLowerCase().includes('accessibility') ||
       f.message.toLowerCase().includes('a11y')
     ).length > 15;
-    
-    const hasTypeScriptIssues = allFindings.filter(f => 
-      f.message.toLowerCase().includes('type') || 
+
+    const hasTypeScriptIssues = allFindings.filter(f =>
+      f.message.toLowerCase().includes('type') ||
       f.message.toLowerCase().includes('interface') ||
       f.message.toLowerCase().includes('typescript')
     ).length > 10;
 
     // ARCHITECTURE & FRAMEWORK EVOLUTION
     const architectureInitiatives: StrategicInitiative[] = [];
-    
+
     // Component Architecture
     const componentScore = auditResult.categories.find(c => c.name === 'Component Library')?.score || 0;
     if (componentScore < 80 || hasTypeScriptIssues) {
@@ -341,7 +341,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
         <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Analysis</Text>
         <Title order={1} size="h2">Action Plan</Title>
       </div>
-      
+
       <div className="action-plan-header">
         <Title order={2} mb="xs">Strategic Initiatives</Title>
         <Text c="dimmed" size="sm" mb="md">
@@ -359,7 +359,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
         {strategicThemes.map((theme, themeIndex) => (
           <div key={themeIndex} className="strategic-theme">
             <Group gap="md" mb="md">
-              <div style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center' }}>{theme.icon}</div>
+              <div style={{ fontSize: '1.25rem', display: 'flex', alignSelf: 'start', marginTop: 3 }}>{theme.icon}</div>
               <div style={{ flex: 1 }}>
                 <Title order={3} mb="xs">{theme.theme}</Title>
                 <Text size="sm" c="dimmed">{theme.description}</Text>
@@ -368,7 +368,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
                 {theme.initiatives.length} strategic initiatives
               </Badge>
             </Group>
-            
+
             <Stack gap="md">
               {theme.initiatives.map((initiative, idx) => (
                 <Card key={idx} className="initiative-card" withBorder>
@@ -384,7 +384,7 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
                     </Group>
                   </Group>
                   <Text size="sm" c="dimmed" mb="sm">{initiative.description}</Text>
-                  
+
                   <Card className="impact-card" mb="md">
                     <Group gap="xs">
                       <Badge size="xs" color="green" variant="dot">Business Impact</Badge>

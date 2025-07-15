@@ -73,7 +73,7 @@ export class DashboardServer {
   private app: express.Application;
   private logger: Logger;
   private server: any;
-  private progressClients: Set<express.Response> = new Set();
+  public progressClients: Set<express.Response> = new Set();
 
   constructor(config: AuditConfig, results: AuditResult) {
     this.config = config;
@@ -95,6 +95,33 @@ export class DashboardServer {
     }
   }
 
+  private async loadLatestResults(): Promise<void> {
+    try {
+      // Try to load results from the audit directory
+      const resultsPath = path.join(this.config.projectPath, 'audit', 'results.json');
+      if (await this.fileExists(resultsPath)) {
+        const content = await fs.readFile(resultsPath, 'utf-8');
+        const diskResults = JSON.parse(content) as AuditResult;
+        
+        // Always prefer disk results when available - they are the source of truth
+        this.logger.info(`Loading results from disk (${diskResults.timestamp})`);
+        this.results = diskResults;
+      } else {
+        // Also try the current working directory's audit folder
+        const cwdResultsPath = path.join(process.cwd(), 'audit', 'results.json');
+        if (await this.fileExists(cwdResultsPath)) {
+          const content = await fs.readFile(cwdResultsPath, 'utf-8');
+          const diskResults = JSON.parse(content) as AuditResult;
+          this.logger.info(`Loading results from current directory (${diskResults.timestamp})`);
+          this.results = diskResults;
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`Could not load results from disk: ${error}`);
+      // Continue with the results passed to constructor
+    }
+  }
+
   private setupMiddleware(): void {
     this.app.use(express.json({ limit: '1mb' })); // Increase payload limit for chat
     // Serve static files if we add them later
@@ -102,7 +129,16 @@ export class DashboardServer {
 
   private async setupRoutes(): Promise<void> {
     // API endpoints
-    this.app.get('/api/results', (req, res) => {
+    this.app.get('/api/results', async (req, res) => {
+      // Add headers to prevent caching
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      
+      // Only load from disk on initial request or if explicitly requested
+      if (req.query.refresh === 'true') {
+        await this.loadLatestResults();
+      }
       res.json(this.results);
     });
 
@@ -125,10 +161,22 @@ export class DashboardServer {
       
       // Add client to the set
       this.progressClients.add(res);
+      this.logger.info(`Client connected. Total clients: ${this.progressClients.size}`);
+      
+      // Send heartbeat to keep connection alive
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(': heartbeat\n\n');
+        } catch {
+          clearInterval(heartbeat);
+        }
+      }, 30000);
       
       // Remove client on disconnect
       req.on('close', () => {
+        clearInterval(heartbeat);
         this.progressClients.delete(res);
+        this.logger.info(`Client disconnected. Total clients: ${this.progressClients.size}`);
       });
     });
 
@@ -337,9 +385,10 @@ export class DashboardServer {
       this.server = this.app.listen(this.config.dashboard.port, () => {
         this.logger.success(`Dashboard running at http://localhost:${this.config.dashboard.port}`);
         
-        if (this.config.dashboard.autoOpen) {
-          this.openBrowser(`http://localhost:${this.config.dashboard.port}`);
-        }
+        // Don't auto-open here - let the init command handle it
+        // if (this.config.dashboard.autoOpen) {
+        //   this.openBrowser(`http://localhost:${this.config.dashboard.port}`);
+        // }
         
         resolve();
       });
@@ -368,6 +417,7 @@ export class DashboardServer {
 
   // Method to send progress updates to all connected clients
   sendProgressUpdate(data: any): void {
+    this.logger.info(`Sending progress update: ${data.type} to ${this.progressClients.size} clients`);
     const message = `data: ${JSON.stringify(data)}\n\n`;
     this.progressClients.forEach(client => {
       try {

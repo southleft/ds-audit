@@ -83,44 +83,63 @@ export class FileScanner {
       dependencies: [],
     };
 
-    // Check for package.json
+    // Find ALL package.json files to support monorepos
     try {
-      const packageJsonPath = path.join(this.config.projectPath, 'package.json');
-      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
+      const packageJsonFiles = await this.scanFiles(['**/package.json']);
       
-      // Detect framework
-      const deps = {
-        ...packageJson.dependencies,
-        ...packageJson.devDependencies,
-      };
+      if (packageJsonFiles.length === 0) {
+        return info;
+      }
+      
+      // Aggregate all dependencies from all package.json files
+      const allDeps: Record<string, string> = {};
+      let frameworkVersion: string | undefined;
+      
+      for (const file of packageJsonFiles) {
+        try {
+          const content = await this.readFile(file.path);
+          const pkg = JSON.parse(content);
+          
+          // Merge dependencies
+          if (pkg.dependencies) {
+            Object.assign(allDeps, pkg.dependencies);
+          }
+          if (pkg.devDependencies) {
+            Object.assign(allDeps, pkg.devDependencies);
+          }
+        } catch (e) {
+          // Skip invalid package.json files
+        }
+      }
 
-      info.dependencies = Object.keys(deps);
+      info.dependencies = Object.keys(allDeps);
 
-      if (deps.react || deps['react-dom']) {
+      // Detect framework (check all common frameworks)
+      if (allDeps.react || allDeps['react-dom']) {
         info.type = 'react';
-        info.frameworkVersion = deps.react || deps['react-dom'];
-      } else if (deps.vue) {
+        info.frameworkVersion = allDeps.react || allDeps['react-dom'];
+      } else if (allDeps.vue) {
         info.type = 'vue';
-        info.frameworkVersion = deps.vue;
-      } else if (deps['@angular/core']) {
+        info.frameworkVersion = allDeps.vue;
+      } else if (allDeps['@angular/core']) {
         info.type = 'angular';
-        info.frameworkVersion = deps['@angular/core'];
-      } else if (deps.svelte) {
+        info.frameworkVersion = allDeps['@angular/core'];
+      } else if (allDeps.svelte) {
         info.type = 'svelte';
-        info.frameworkVersion = deps.svelte;
+        info.frameworkVersion = allDeps.svelte;
       }
 
       // Detect TypeScript
-      info.hasTypeScript = !!deps.typescript;
+      info.hasTypeScript = !!allDeps.typescript;
 
       // Detect Storybook
-      info.hasStorybook = Object.keys(deps).some(dep => dep.includes('storybook'));
+      info.hasStorybook = Object.keys(allDeps).some(dep => dep.includes('storybook'));
 
       // Detect test framework
-      info.hasTests = !!(deps.jest || deps.vitest || deps.mocha || deps['@testing-library/react']);
+      info.hasTests = !!(allDeps.jest || allDeps.vitest || allDeps.mocha || allDeps.cypress || allDeps['@testing-library/react']);
 
     } catch (error) {
-      // No package.json found
+      console.error('[FileScanner] Error detecting project info:', error);
     }
 
     // Detect package manager

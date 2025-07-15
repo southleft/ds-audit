@@ -102,7 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, audi
         {auditResult && (
           <div className="audit-info">
             <Text size="xs" c="dimmed" fw={500}>
-              Last audit: {new Date(auditResult.timestamp).toLocaleDateString()}
+              Last audit: {new Date(auditResult.timestamp).toLocaleString()}
             </Text>
           </div>
         )}
