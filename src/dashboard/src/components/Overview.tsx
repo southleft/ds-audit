@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Grid, Card, Text, Title, Group, Badge, Progress, Button, Stack } from '@mantine/core';
-import { TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
 import { AuditResult } from '@types';
 import './Overview.css';
@@ -10,6 +10,79 @@ Chart.register(...registerables);
 interface OverviewProps {
   auditResult: AuditResult;
 }
+
+const getColorForScore = (score: number): string => {
+  if (score >= 90) return '#0cce6b'; // Green
+  if (score >= 50) return '#ffa400'; // Orange
+  return '#ff4e42'; // Red
+};
+
+// Lighthouse-style circular score indicator component
+const CircularScoreIndicator: React.FC<{ 
+  score: number; 
+  label: string; 
+  description?: string;
+}> = ({ score, label, description }) => {
+  const color = getColorForScore(score);
+  const circumference = 2 * Math.PI * 36; // radius = 36
+  const strokeDasharray = `${(score / 100) * circumference} ${circumference}`;
+
+  return (
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center',
+      padding: '1.5rem',
+      flex: 1
+    }}>
+      <div style={{ position: 'relative', marginBottom: '1rem' }}>
+        <svg width="96" height="96" viewBox="0 0 96 96">
+          {/* Background circle */}
+          <circle
+            cx="48"
+            cy="48"
+            r="36"
+            fill="none"
+            stroke="#44444d"
+            strokeWidth="3"
+          />
+          {/* Score circle */}
+          <circle
+            cx="48"
+            cy="48"
+            r="36"
+            fill="none"
+            stroke={color}
+            strokeWidth="3"
+            strokeDasharray={strokeDasharray}
+            strokeLinecap="round"
+            transform="rotate(-90 48 48)"
+            style={{ transition: 'stroke-dasharray 0.5s ease' }}
+          />
+        </svg>
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          fontSize: '1.75rem',
+          fontWeight: 700,
+          color: color
+        }}>
+          {score}
+        </div>
+      </div>
+      <Text size="sm" fw={600} c="var(--text-primary)" style={{ marginBottom: '0.25rem' }}>
+        {label}
+      </Text>
+      {description && (
+        <Text size="xs" c="dimmed" style={{ textAlign: 'center', maxWidth: '180px' }}>
+          {description}
+        </Text>
+      )}
+    </div>
+  );
+};
 
 const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
   const radarChartRef = useRef<HTMLCanvasElement>(null);
@@ -28,6 +101,11 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
   }, [auditResult]);
 
   const createCharts = () => {
+    // Don't create charts if no categories
+    if (!auditResult.categories || auditResult.categories.length === 0) {
+      return;
+    }
+    
     const categories = auditResult.categories.map(cat => cat.name);
     const scores = auditResult.categories.map(cat => cat.score);
     const colors = auditResult.categories.map(cat => getColorForScore(cat.score));
@@ -195,13 +273,6 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
     }
   };
 
-  const getColorForScore = (score: number): string => {
-    if (score >= 90) return '#22c55e';
-    if (score >= 80) return '#3b82f6';
-    if (score >= 70) return '#f97316';
-    if (score >= 60) return '#f97316';
-    return '#ef4444';
-  };
 
   const getGradeColor = (grade: string): string => {
     const gradeColors: Record<string, string> = {
@@ -214,19 +285,84 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
     return gradeColors[grade] || 'gray';
   };
 
-  // Calculate key insights
-  const topCategory = auditResult.categories.reduce((prev, current) => (prev.score > current.score) ? prev : current);
-  const bottomCategory = auditResult.categories.reduce((prev, current) => (prev.score < current.score) ? prev : current);
+  // Calculate rolled-up scores for the 4 main indicators
+  const calculateComponentHealth = () => {
+    const componentCat = auditResult.categories.find(c => c.name === 'Components');
+    const accessibilityCat = auditResult.categories.find(c => c.name === 'Accessibility');
+    if (!componentCat && !accessibilityCat) return 0;
+    
+    // Weighted average: 70% components, 30% accessibility
+    const compScore = componentCat?.score || 0;
+    const a11yScore = accessibilityCat?.score || 0;
+    return Math.round(compScore * 0.7 + a11yScore * 0.3);
+  };
+
+  const calculateTokenArchitecture = () => {
+    const tokenCat = auditResult.categories.find(c => c.name === 'Tokens');
+    return tokenCat?.score || 0;
+  };
+
+  const calculateDocumentationGovernance = () => {
+    const docCat = auditResult.categories.find(c => c.name === 'Documentation');
+    const govCat = auditResult.categories.find(c => c.name === 'Governance');
+    if (!docCat && !govCat) return 0;
+    
+    // Average of both categories
+    const docScore = docCat?.score || 0;
+    const govScore = govCat?.score || 0;
+    const count = (docCat ? 1 : 0) + (govCat ? 1 : 0);
+    return count > 0 ? Math.round((docScore + govScore) / count) : 0;
+  };
+
+  const componentHealthScore = calculateComponentHealth();
+  const tokenArchitectureScore = calculateTokenArchitecture();
+  const docGovernanceScore = calculateDocumentationGovernance();
+
+  // Calculate key insights - handle empty categories array
+  const topCategory = auditResult.categories.length > 0 
+    ? auditResult.categories.reduce((prev, current) => (prev.score > current.score) ? prev : current)
+    : null;
+  const bottomCategory = auditResult.categories.length > 0
+    ? auditResult.categories.reduce((prev, current) => (prev.score < current.score) ? prev : current)
+    : null;
   
   // Get bottom 3 categories for improvement
-  const bottomThreeCategories = [...auditResult.categories]
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 3);
+  const bottomThreeCategories = auditResult.categories.length > 0
+    ? [...auditResult.categories]
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 3)
+    : [];
   
   // Calculate critical issues per category
   const getCriticalIssueCount = (category: any) => {
     return category.findings?.filter((f: any) => f.type === 'error').length || 0;
   };
+  
+  // Show message if no categories yet
+  if (!auditResult.categories || auditResult.categories.length === 0) {
+    return (
+      <div className="overview-container">
+        <Card style={{ 
+          textAlign: 'center', 
+          padding: '4rem 2rem',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-color)'
+        }}>
+          <Title order={3} mb="md">Audit In Progress</Title>
+          <Text c="dimmed" mb="xl">
+            The audit is currently analyzing your design system. 
+            Please check the Progress tab to see real-time updates.
+          </Text>
+          <Button 
+            variant="filled" 
+            onClick={() => window.location.hash = 'progress'}
+          >
+            View Progress
+          </Button>
+        </Card>
+      </div>
+    );
+  }
   
   return (
     <div className="overview-container">
@@ -236,55 +372,43 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         <Title order={1} size="h2">Overview</Title>
       </div>
       
-      {/* Top Summary Row - 3 Cards */}
-      <div className="summary-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
-        {/* Card 1: Design System Health Score */}
-        <Card className="metric-card score-card" style={{ 
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '8px',
-          textAlign: 'center'
+      {/* Lighthouse-style 4 circular indicators */}
+      <Card style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '8px',
+        padding: '2rem',
+        marginBottom: '2rem'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-around',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem'
         }}>
-          <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Design System Health</Text>
-          <Text size="3rem" fw={700} style={{ lineHeight: 1, color: getColorForScore(auditResult.overallScore) }}>
-            {auditResult.overallScore}
-          </Text>
-          <Text size="sm" c="dimmed" mb="xs">out of 100</Text>
-          <Badge size="lg" color={getGradeColor(auditResult.overallGrade)} variant="filled">
-            Grade {auditResult.overallGrade}
-          </Badge>
-        </Card>
-        
-        {/* Card 2: Top 3 Areas for Improvement */}
-        <Card className="metric-card improvement-card clickable" 
-          onClick={() => window.location.hash = 'recommendations'}
-          style={{ cursor: 'pointer' }}
-        >
-          <Group justify="space-between" mb="md">
-            <Text size="xs" c="dimmed" fw={500} tt="uppercase">Top Areas for Improvement</Text>
-            <Target size={16} color="var(--mantine-color-orange-6)" />
-          </Group>
-          <Stack gap="xs">
-            {bottomThreeCategories.map((category, index) => (
-              <Group key={category.name} justify="space-between">
-                <Text size="sm" fw={500}>{index + 1}. {category.name}</Text>
-                <Badge size="sm" color={getGradeColor(category.grade)} variant="light">
-                  {category.score}
-                </Badge>
-              </Group>
-            ))}
-          </Stack>
-        </Card>
-        
-        {/* Card 3: Score Trend */}
-        <Card className="metric-card trend-card">
-          <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb="md">Score Trend Since Last Audit</Text>
-          <Group justify="center" align="center" style={{ height: '100px' }}>
-            <Text size="lg" c="dimmed">First Audit</Text>
-          </Group>
-          <Text size="xs" c="dimmed" style={{ textAlign: 'center' }}>No previous data available</Text>
-        </Card>
-      </div>
+          <CircularScoreIndicator 
+            score={auditResult.overallScore}
+            label="Design System Health"
+            description="Overall weighted score"
+          />
+          <CircularScoreIndicator 
+            score={componentHealthScore}
+            label="Component Health"
+            description="Component coverage & a11y"
+          />
+          <CircularScoreIndicator 
+            score={tokenArchitectureScore}
+            label="Token Architecture"
+            description="Design token structure"
+          />
+          <CircularScoreIndicator 
+            score={docGovernanceScore}
+            label="Documentation & Governance"
+            description="Docs coverage & versioning"
+          />
+        </div>
+      </Card>
 
       {/* Charts Section */}
       <div className="charts-section">
@@ -388,31 +512,33 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
       </Card>
 
       {/* Additional insights section */}
-      <div className="insights-section">
-        <Grid gutter="md">
-          <Grid.Col span={{ base: 12, md: 6 }}>
-            <Card className="insight-card">
-              <Group justify="space-between" mb="sm">
-                <Title order={4}>Top Performer</Title>
-                <Badge color="green" variant="light">{topCategory.score}/100</Badge>
-              </Group>
-              <Text fw={600} size="lg">{topCategory.name}</Text>
-              <Text size="sm" c="dimmed">Excellent implementation</Text>
-            </Card>
-          </Grid.Col>
-          
-          <Grid.Col span={{ base: 12, md: 6 }}>
-            <Card className="insight-card">
-              <Group justify="space-between" mb="sm">
-                <Title order={4}>Needs Attention</Title>
-                <Badge color="orange" variant="light">{bottomCategory.score}/100</Badge>
-              </Group>
-              <Text fw={600} size="lg">{bottomCategory.name}</Text>
-              <Text size="sm" c="dimmed">Priority for improvement</Text>
-            </Card>
-          </Grid.Col>
-        </Grid>
-      </div>
+      {(topCategory && bottomCategory) && (
+        <div className="insights-section">
+          <Grid gutter="md">
+            <Grid.Col span={{ base: 12, md: 6 }}>
+              <Card className="insight-card">
+                <Group justify="space-between" mb="sm">
+                  <Title order={4}>Top Performer</Title>
+                  <Badge color="green" variant="light">{topCategory.score}/100</Badge>
+                </Group>
+                <Text fw={600} size="lg">{topCategory.name}</Text>
+                <Text size="sm" c="dimmed">Excellent implementation</Text>
+              </Card>
+            </Grid.Col>
+            
+            <Grid.Col span={{ base: 12, md: 6 }}>
+              <Card className="insight-card">
+                <Group justify="space-between" mb="sm">
+                  <Title order={4}>Needs Attention</Title>
+                  <Badge color="orange" variant="light">{bottomCategory.score}/100</Badge>
+                </Group>
+                <Text fw={600} size="lg">{bottomCategory.name}</Text>
+                <Text size="sm" c="dimmed">Priority for improvement</Text>
+              </Card>
+            </Grid.Col>
+          </Grid>
+        </div>
+      )}
     </div>
   );
 };

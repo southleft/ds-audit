@@ -5,11 +5,17 @@
   font-family: 'Work Sans', sans-serif;
 }
 
-/* Top Summary Row - 3 Cards */
-.summary-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+/* Lighthouse-style indicators */
+.lighthouse-indicators {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 1rem;
+  padding: 2rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   margin-bottom: 2rem;
 }
 

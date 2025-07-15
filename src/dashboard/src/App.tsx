@@ -55,6 +55,20 @@ function App() {
     };
   }, []);
 
+  // Redirect to progress page if audit data is incomplete
+  useEffect(() => {
+    if (!loading && auditResult) {
+      // Check if audit is incomplete (no categories or empty categories)
+      if (!auditResult.categories || auditResult.categories.length === 0) {
+        // Only redirect if not already on progress page
+        if (currentSection !== 'progress') {
+          setCurrentSection('progress');
+          window.location.hash = 'progress';
+        }
+      }
+    }
+  }, [loading, auditResult, currentSection]);
+
   const loadAuditResults = async () => {
     try {
       setLoading(true);
