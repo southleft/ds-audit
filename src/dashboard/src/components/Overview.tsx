@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Grid, Card, Text, Title, Group, Badge, Progress, Button } from '@mantine/core';
-import { AlertTriangle, Zap, FileText } from 'lucide-react';
+import { AlertTriangle, Zap, FileText, Bot } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
 import { AuditResult } from '@types';
 import './Overview.css';
@@ -198,12 +198,9 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
     return gradeColors[grade] || 'gray';
   };
 
-  // Calculate key insights
-  const highPriorityIssues = auditResult.recommendations?.filter(r => r.priority === 'high').length || 0;
-  const quickWins = auditResult.recommendations?.filter(r => r.effort === 'quick-win').length || 0;
+  // Calculate key insights for bottom section
   const topCategory = auditResult.categories.reduce((prev, current) => (prev.score > current.score) ? prev : current);
   const bottomCategory = auditResult.categories.reduce((prev, current) => (prev.score < current.score) ? prev : current);
-  const averageScore = Math.round(auditResult.categories.reduce((sum, cat) => sum + cat.score, 0) / auditResult.categories.length);
   
   return (
     <div className="overview-container">
@@ -213,51 +210,66 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         <Title order={1} size="h2">Overview</Title>
       </div>
       
-      {/* Overall Score - Highlighted First */}
-      <Card className="overall-score-card" mb="xl" style={{ 
-        background: 'linear-gradient(135deg, rgba(91, 99, 211, 0.1) 0%, rgba(45, 55, 145, 0.1) 100%)',
-        border: '1px solid rgba(91, 99, 211, 0.2)',
-        borderRadius: '12px'
-      }}>
-        <Group justify="center" align="center" style={{ textAlign: 'center' }}>
-          <div>
-            <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Design System Health</Text>
-            <Text size="4rem" fw={700} style={{ lineHeight: 1, color: 'var(--mantine-color-blue-6)' }}>
-              {auditResult.overallScore}
-            </Text>
-            <Text size="lg" c="dimmed" mb="sm">out of 100</Text>
-            <Badge size="xl" color={getGradeColor(auditResult.overallGrade)} variant="filled">
-              Grade {auditResult.overallGrade}
-            </Badge>
-          </div>
-        </Group>
-      </Card>
-
-      {/* Secondary Metrics Row */}
-      <div className="secondary-metrics-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-        <div className="metric-card priority">
-          <div className="metric-icon"><AlertTriangle size={24} color="var(--mantine-color-red-6)" /></div>
-          <div className="metric-content">
-            <Text className="metric-value">{highPriorityIssues}</Text>
-            <Text className="metric-label">High Priority</Text>
-          </div>
-        </div>
+      {/* Primary Metrics Row - 4 Column Grid */}
+      <div className="primary-metrics-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+        {/* Overall Score - Highlighted */}
+        <Card className="metric-card score-card" style={{ 
+          background: 'linear-gradient(135deg, rgba(91, 99, 211, 0.1) 0%, rgba(45, 55, 145, 0.1) 100%)',
+          border: '1px solid rgba(91, 99, 211, 0.2)',
+          borderRadius: '12px',
+          textAlign: 'center',
+          cursor: 'pointer'
+        }}
+        onClick={() => window.location.hash = 'categories'}
+        >
+          <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Design System Health</Text>
+          <Text size="3rem" fw={700} style={{ lineHeight: 1, color: 'var(--mantine-color-blue-6)' }}>
+            {auditResult.overallScore}
+          </Text>
+          <Text size="sm" c="dimmed" mb="xs">out of 100</Text>
+          <Badge size="lg" color={getGradeColor(auditResult.overallGrade)} variant="filled">
+            Grade {auditResult.overallGrade}
+          </Badge>
+        </Card>
         
-        <div className="metric-card quick-wins">
-          <div className="metric-icon"><Zap size={24} color="var(--mantine-color-yellow-6)" /></div>
+        {/* Critical Issues */}
+        <Card className="metric-card critical-card clickable" 
+          onClick={() => window.location.hash = 'recommendations'}
+          style={{ cursor: 'pointer' }}
+        >
+          <div className="metric-icon"><AlertTriangle size={20} color="var(--mantine-color-red-6)" /></div>
           <div className="metric-content">
-            <Text className="metric-value">{quickWins}</Text>
-            <Text className="metric-label">Quick Wins</Text>
+            <Text className="metric-value">{auditResult.categories.filter(c => c.score < 50).length}</Text>
+            <Text className="metric-label">Critical Areas</Text>
+            <Text size="xs" c="dimmed">Need immediate attention</Text>
           </div>
-        </div>
+        </Card>
         
-        <div className="metric-card files">
-          <div className="metric-icon"><FileText size={24} color="var(--mantine-color-blue-6)" /></div>
+        {/* AI Insights Available */}
+        <Card className="metric-card ai-card clickable"
+          onClick={() => window.location.hash = 'ai-insights'}
+          style={{ cursor: 'pointer' }}
+        >
+          <div className="metric-icon"><Bot size={20} color="var(--mantine-color-violet-6)" /></div>
           <div className="metric-content">
-            <Text className="metric-value">{auditResult.metadata?.filesScanned || 0}</Text>
-            <Text className="metric-label">Files Analyzed</Text>
+            <Text className="metric-value">{auditResult.aiInsights ? 'Available' : 'Generate'}</Text>
+            <Text className="metric-label">AI Analysis</Text>
+            <Text size="xs" c="dimmed">{auditResult.aiInsights ? 'View insights' : 'Get recommendations'}</Text>
           </div>
-        </div>
+        </Card>
+        
+        {/* Action Plan Ready */}
+        <Card className="metric-card action-card clickable"
+          onClick={() => window.location.hash = 'action-plan'}
+          style={{ cursor: 'pointer' }}
+        >
+          <div className="metric-icon"><FileText size={20} color="var(--mantine-color-green-6)" /></div>
+          <div className="metric-content">
+            <Text className="metric-value">{auditResult.recommendations?.length || 0}</Text>
+            <Text className="metric-label">Action Items</Text>
+            <Text size="xs" c="dimmed">Strategic roadmap ready</Text>
+          </div>
+        </Card>
       </div>
 
       {/* Enhanced Charts Section - Different Data Perspectives */}
