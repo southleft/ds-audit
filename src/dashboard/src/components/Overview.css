@@ -1,22 +1,23 @@
 .overview-container {
-  padding: 1.5rem;
+  padding: 2rem;
   max-width: 1400px;
   margin: 0 auto;
+  font-family: 'Work Sans', sans-serif;
 }
 
-/* Primary Metrics Row - 4 Column Grid */
-.primary-metrics-row {
+/* Top Summary Row - 3 Cards */
+.summary-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .metric-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  padding: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1.5rem;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -86,16 +87,12 @@
   padding: 1.5rem 1rem;
 }
 
-.metric-card.critical-card::before {
-  background: var(--danger);
+.metric-card.improvement-card::before {
+  background: var(--mantine-color-orange-6);
 }
 
-.metric-card.ai-card::before {
-  background: var(--mantine-color-violet-6);
-}
-
-.metric-card.action-card::before {
-  background: var(--success);
+.metric-card.trend-card::before {
+  background: var(--mantine-color-blue-6);
 }
 
 .metric-icon {
@@ -131,9 +128,9 @@
 
 .chart-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  padding: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1.5rem;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -142,7 +139,7 @@
 .chart-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 1rem;
 }
 
@@ -167,9 +164,9 @@
 /* Category Summary */
 .category-summary-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: 0.5rem;
-  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1.75rem;
   margin-bottom: 1.5rem;
 }
 
@@ -191,10 +188,10 @@
 }
 
 .category-item {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 0.375rem;
-  padding: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 1.25rem;
   transition: all 0.2s ease;
 }
 
@@ -281,8 +278,9 @@
 
 /* Responsive Design */
 @media (max-width: 1024px) {
-  .primary-metrics-row {
-    grid-template-columns: 1fr 1fr;
+  .summary-row {
+    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 }
 
@@ -291,7 +289,7 @@
     padding: 1rem;
   }
   
-  .primary-metrics-row {
+  .summary-row {
     grid-template-columns: 1fr;
     gap: 0.75rem;
   }

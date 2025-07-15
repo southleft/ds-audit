@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Grid, Card, Text, Title, Group, Badge, Progress, Button } from '@mantine/core';
-import { AlertTriangle, Zap, FileText, Bot } from 'lucide-react';
+import { Grid, Card, Text, Title, Group, Badge, Progress, Button, Stack } from '@mantine/core';
+import { TrendingUp, TrendingDown, Target } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
 import { AuditResult } from '@types';
 import './Overview.css';
@@ -63,13 +63,29 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
               display: false
             },
             tooltip: {
-              backgroundColor: 'rgba(24, 24, 27, 0.9)',
+              backgroundColor: 'rgba(24, 24, 27, 0.95)',
               titleColor: '#f4f4f5',
               bodyColor: '#a8a8b3',
-              borderColor: '#2a2a2e',
+              borderColor: '#3a3a3e',
               borderWidth: 1,
-              cornerRadius: 4,
-              padding: 8
+              cornerRadius: 6,
+              padding: 12,
+              displayColors: false,
+              callbacks: {
+                title: function() {
+                  return 'Category Score';
+                },
+                label: function(context: any) {
+                  const category = context.label;
+                  const score = context.parsed.r;
+                  const categoryData = auditResult.categories.find(c => c.name === category);
+                  return [
+                    `${category}: ${score}/100`,
+                    `Grade: ${categoryData?.grade || 'N/A'}`,
+                    `${categoryData?.findings?.length || 0} findings`
+                  ];
+                }
+              }
             }
           },
           scales: {
@@ -198,9 +214,19 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
     return gradeColors[grade] || 'gray';
   };
 
-  // Calculate key insights for bottom section
+  // Calculate key insights
   const topCategory = auditResult.categories.reduce((prev, current) => (prev.score > current.score) ? prev : current);
   const bottomCategory = auditResult.categories.reduce((prev, current) => (prev.score < current.score) ? prev : current);
+  
+  // Get bottom 3 categories for improvement
+  const bottomThreeCategories = [...auditResult.categories]
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 3);
+  
+  // Calculate critical issues per category
+  const getCriticalIssueCount = (category: any) => {
+    return category.findings?.filter((f: any) => f.type === 'error').length || 0;
+  };
   
   return (
     <div className="overview-container">
@@ -210,20 +236,17 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
         <Title order={1} size="h2">Overview</Title>
       </div>
       
-      {/* Primary Metrics Row - 4 Column Grid */}
-      <div className="primary-metrics-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
-        {/* Overall Score - Highlighted */}
+      {/* Top Summary Row - 3 Cards */}
+      <div className="summary-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+        {/* Card 1: Design System Health Score */}
         <Card className="metric-card score-card" style={{ 
-          background: 'linear-gradient(135deg, rgba(91, 99, 211, 0.1) 0%, rgba(45, 55, 145, 0.1) 100%)',
-          border: '1px solid rgba(91, 99, 211, 0.2)',
-          borderRadius: '12px',
-          textAlign: 'center',
-          cursor: 'pointer'
-        }}
-        onClick={() => window.location.hash = 'categories'}
-        >
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          textAlign: 'center'
+        }}>
           <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Design System Health</Text>
-          <Text size="3rem" fw={700} style={{ lineHeight: 1, color: 'var(--mantine-color-blue-6)' }}>
+          <Text size="3rem" fw={700} style={{ lineHeight: 1, color: getColorForScore(auditResult.overallScore) }}>
             {auditResult.overallScore}
           </Text>
           <Text size="sm" c="dimmed" mb="xs">out of 100</Text>
@@ -232,54 +255,47 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
           </Badge>
         </Card>
         
-        {/* Critical Issues */}
-        <Card className="metric-card critical-card clickable" 
+        {/* Card 2: Top 3 Areas for Improvement */}
+        <Card className="metric-card improvement-card clickable" 
           onClick={() => window.location.hash = 'recommendations'}
           style={{ cursor: 'pointer' }}
         >
-          <div className="metric-icon"><AlertTriangle size={20} color="var(--mantine-color-red-6)" /></div>
-          <div className="metric-content">
-            <Text className="metric-value">{auditResult.categories.filter(c => c.score < 50).length}</Text>
-            <Text className="metric-label">Critical Areas</Text>
-            <Text size="xs" c="dimmed">Need immediate attention</Text>
-          </div>
+          <Group justify="space-between" mb="md">
+            <Text size="xs" c="dimmed" fw={500} tt="uppercase">Top Areas for Improvement</Text>
+            <Target size={16} color="var(--mantine-color-orange-6)" />
+          </Group>
+          <Stack gap="xs">
+            {bottomThreeCategories.map((category, index) => (
+              <Group key={category.name} justify="space-between">
+                <Text size="sm" fw={500}>{index + 1}. {category.name}</Text>
+                <Badge size="sm" color={getGradeColor(category.grade)} variant="light">
+                  {category.score}
+                </Badge>
+              </Group>
+            ))}
+          </Stack>
         </Card>
         
-        {/* AI Insights Available */}
-        <Card className="metric-card ai-card clickable"
-          onClick={() => window.location.hash = 'ai-insights'}
-          style={{ cursor: 'pointer' }}
-        >
-          <div className="metric-icon"><Bot size={20} color="var(--mantine-color-violet-6)" /></div>
-          <div className="metric-content">
-            <Text className="metric-value">{auditResult.aiInsights ? 'Available' : 'Generate'}</Text>
-            <Text className="metric-label">AI Analysis</Text>
-            <Text size="xs" c="dimmed">{auditResult.aiInsights ? 'View insights' : 'Get recommendations'}</Text>
-          </div>
-        </Card>
-        
-        {/* Action Plan Ready */}
-        <Card className="metric-card action-card clickable"
-          onClick={() => window.location.hash = 'action-plan'}
-          style={{ cursor: 'pointer' }}
-        >
-          <div className="metric-icon"><FileText size={20} color="var(--mantine-color-green-6)" /></div>
-          <div className="metric-content">
-            <Text className="metric-value">{auditResult.recommendations?.length || 0}</Text>
-            <Text className="metric-label">Action Items</Text>
-            <Text size="xs" c="dimmed">Strategic roadmap ready</Text>
-          </div>
+        {/* Card 3: Score Trend */}
+        <Card className="metric-card trend-card">
+          <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb="md">Score Trend Since Last Audit</Text>
+          <Group justify="center" align="center" style={{ height: '100px' }}>
+            <Text size="lg" c="dimmed">First Audit</Text>
+          </Group>
+          <Text size="xs" c="dimmed" style={{ textAlign: 'center' }}>No previous data available</Text>
         </Card>
       </div>
 
-      {/* Enhanced Charts Section - Different Data Perspectives */}
+      {/* Charts Section */}
       <div className="charts-section">
-        <Grid gutter="md">
+        <Grid gutter="lg">
           <Grid.Col span={{ base: 12, lg: 6 }}>
             <Card className="chart-card">
               <div className="chart-header">
-                <Title order={4}>Category Rankings</Title>
-                <Text size="xs" c="dimmed">Performance ranked by score</Text>
+                <div>
+                  <Title order={4}>Category Rankings</Title>
+                  <Text size="xs" c="dimmed">Performance ranked by score</Text>
+                </div>
                 <Button 
                   variant="subtle" 
                   size="xs"
@@ -297,8 +313,10 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
           <Grid.Col span={{ base: 12, lg: 6 }}>
             <Card className="chart-card">
               <div className="chart-header">
-                <Title order={4}>System Health Overview</Title>
-                <Text size="xs" c="dimmed">Holistic view of all categories</Text>
+                <div>
+                  <Title order={4}>System Coverage Overview</Title>
+                  <Text size="xs" c="dimmed">Holistic view of all categories</Text>
+                </div>
                 <Button 
                   variant="subtle" 
                   size="xs"
@@ -339,7 +357,14 @@ const Overview: React.FC<OverviewProps> = ({ auditResult }) => {
               <div className="category-header">
                 <div className="category-info">
                   <Text fw={600}>{category.name}</Text>
-                  <Text size="xs" c="dimmed">{category.findings?.length || 0} findings</Text>
+                  <Group gap="xs">
+                    <Text size="xs" c="dimmed">{category.findings?.length || 0} findings</Text>
+                    {getCriticalIssueCount(category) > 0 && (
+                      <Badge size="xs" color="red" variant="light">
+                        {getCriticalIssueCount(category)} critical
+                      </Badge>
+                    )}
+                  </Group>
                 </div>
                 <Badge 
                   size="lg" 
