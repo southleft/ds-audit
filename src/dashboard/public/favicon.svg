@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <style>
+      .icon-fill {
+        fill: #6366f1;
+      }
+      @media (prefers-color-scheme: dark) {
+        .icon-fill {
+          fill: #818cf8;
+        }
+      }
+    </style>
+  </defs>
+  <!-- Audit/Chart icon representing design system analysis -->
+  <g class="icon-fill">
+    <!-- Bar chart bars -->
+    <rect x="4" y="20" width="4" height="8" rx="0.5"/>
+    <rect x="10" y="16" width="4" height="12" rx="0.5"/>
+    <rect x="16" y="12" width="4" height="16" rx="0.5"/>
+    <rect x="22" y="8" width="4" height="20" rx="0.5"/>
+    
+    <!-- Checkmark overlay for audit completion -->
+    <path d="M26 4 L28 6 L20 14 L16 10 L18 8 L20 10 L26 4" 
+          stroke-width="0" 
+          fill-rule="evenodd"/>
+  </g>
+</svg>
