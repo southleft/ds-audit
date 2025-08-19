@@ -259,21 +259,66 @@ export class TokenParser {
     const keyLower = key.toLowerCase();
     const valueStr = String(value).toLowerCase();
 
-    // Performance optimization: Use Set for faster lookup
-    if (this.colorKeywords.has(keyLower) || this.colorPatterns.test(valueStr)) {
-      return 'color';
-    }
-    if (this.spacingKeywords.has(keyLower) || this.spacingPatterns.test(valueStr)) {
-      return 'spacing';
-    }
-    if (this.typographyKeywords.has(keyLower)) {
+    // Extract full path for tiered token analysis (e.g., color.primary.500 or typography.fontSize.lg)
+    const pathParts = keyLower.split('.');
+    const rootCategory = pathParts[0] || '';
+    const subCategory = pathParts[1] || '';
+    const leafKey = pathParts[pathParts.length - 1] || '';
+
+    // Performance optimization: Check path structure first for tiered tokens
+    // Check typography first to prevent fontSize tokens from being classified as spacing
+    if (this.typographyKeywords.has(rootCategory) || 
+        rootCategory === 'typography' || // Explicit check for 'typography' root
+        this.typographyKeywords.has(subCategory) || 
+        this.typographyKeywords.has(leafKey) ||
+        keyLower.includes('fontsize') || keyLower.includes('font-size') ||
+        keyLower.includes('fontweight') || keyLower.includes('font-weight') ||
+        keyLower.includes('lineheight') || keyLower.includes('line-height') ||
+        // Additional check for camelCase and compound words
+        subCategory === 'fontsize' || subCategory === 'fontweight' || subCategory === 'lineheight' ||
+        // Check for any typography-related substring in the full path
+        pathParts.some(part => part === 'fontsize' || part === 'fontweight' || part === 'lineheight' || 
+                              part === 'font' || part === 'text' || part === 'typography')) {
       return 'typography';
     }
-    if (this.shadowKeywords.has(keyLower)) {
+    
+    if (this.colorKeywords.has(rootCategory) || this.colorKeywords.has(subCategory) || 
+        this.colorKeywords.has(leafKey) || this.colorPatterns.test(valueStr)) {
+      return 'color';
+    }
+    
+    if (this.spacingKeywords.has(rootCategory) || this.spacingKeywords.has(subCategory) || 
+        this.spacingKeywords.has(leafKey) || this.spacingPatterns.test(valueStr)) {
+      return 'spacing';
+    }
+    
+    if (this.shadowKeywords.has(rootCategory) || this.shadowKeywords.has(subCategory) || 
+        this.shadowKeywords.has(leafKey)) {
       return 'shadow';
     }
-    if (this.borderKeywords.has(keyLower)) {
+    
+    if (this.borderKeywords.has(rootCategory) || this.borderKeywords.has(subCategory) || 
+        this.borderKeywords.has(leafKey)) {
       return 'border';
+    }
+
+    // Additional checks for common patterns
+    // Check for size/weight patterns in typography
+    if (keyLower.includes('font') || keyLower.includes('text') || keyLower.includes('weight') || 
+        leafKey.match(/^(xs|sm|base|lg|xl|\d+xl|thin|light|normal|medium|semibold|bold|black)$/)) {
+      return 'typography';
+    }
+
+    // Check for numeric size patterns that might be spacing
+    if (leafKey.match(/^\d+$/) && (rootCategory === 'space' || rootCategory === 'spacing' || 
+        pathParts.some(part => this.spacingKeywords.has(part)))) {
+      return 'spacing';
+    }
+
+    // Check for color patterns (50, 100, 200, etc. are common color scales)
+    if (leafKey.match(/^(50|100|200|300|400|500|600|700|800|900)$/) && 
+        (rootCategory === 'color' || pathParts.some(part => this.colorKeywords.has(part)))) {
+      return 'color';
     }
     
     return 'other';

@@ -101,7 +101,7 @@ export class TokenCoverageAuditor {
   private async scanSourceFiles(): Promise<HardcodedValue[]> {
     const hardcodedValues: Map<string, HardcodedValue> = new Map();
     
-    // Patterns for source files to scan - more focused on actual components
+    // Enhanced patterns for source files including web components
     const sourcePatterns = [
       // Component files
       '**/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
@@ -109,10 +109,23 @@ export class TokenCoverageAuditor {
       '**/app/**/*.{js,jsx,ts,tsx}',
       '**/pages/**/*.{js,jsx,ts,tsx}',
       
+      // Web component patterns (Altitude-style)
+      '**/*.component.ts',
+      '**/web-components/**/*.ts',
+      '**/libs/*/components/**/*.ts',
+      '**/packages/*/components/**/*.ts',
+      
       // Style files
       '**/components/**/*.{css,scss,sass,less}',
       '**/src/**/*.{css,scss,sass,less}',
       '**/styles/**/*.{css,scss,sass,less}',
+      '**/libs/*/components/**/*.{css,scss,sass,less}',
+      
+      // Template files that might contain token usage
+      '**/*.html',
+      '**/*.hbs',
+      '**/*.handlebars',
+      '**/*.template.html',
       
       // Exclusions
       '!**/node_modules/**',
@@ -427,28 +440,98 @@ export class TokenCoverageAuditor {
   }
 
   /**
-   * Find token by CSS custom property name
+   * Generate CSS custom property mapping for tokens
+   * Handles different naming conventions: --al-theme-color-brand-red-500, --color-primary-500, etc.
+   */
+  private generateTokenToCSSMapping(): Map<string, string[]> {
+    const mapping = new Map<string, string[]>();
+    
+    for (const token of this.tokens) {
+      const customProperties: string[] = [];
+      const tokenPath = token.name.toLowerCase();
+      
+      // Generate different CSS custom property variations
+      // Standard convention: --color-primary-500
+      const standardProp = `--${tokenPath.replace(/\./g, '-')}`;
+      customProperties.push(standardProp);
+      
+      // Altitude-style: --al-theme-color-primary-500
+      const altitudeProp = `--al-theme-${tokenPath.replace(/\./g, '-')}`;
+      customProperties.push(altitudeProp);
+      
+      // Alternative: --al-color-primary-500 (without theme)
+      const altProp = `--al-${tokenPath.replace(/\./g, '-')}`;
+      customProperties.push(altProp);
+      
+      // Bootstrap/Tailwind style: --bs-primary-500
+      const bsProp = `--bs-${tokenPath.replace(/\./g, '-')}`;
+      customProperties.push(bsProp);
+      
+      // Material Design style: --md-sys-color-primary
+      const mdProp = `--md-sys-${tokenPath.replace(/\./g, '-')}`;
+      customProperties.push(mdProp);
+      
+      // Semantic tokens: if token contains semantic names, create shortcuts
+      const pathParts = tokenPath.split('.');
+      if (pathParts.length > 2) {
+        // Create semantic shortcuts like --primary-500 from color.primary.500
+        const semanticProp = `--${pathParts.slice(1).join('-')}`;
+        customProperties.push(semanticProp);
+      }
+      
+      mapping.set(token.name, customProperties);
+    }
+    
+    return mapping;
+  }
+
+  /**
+   * Find token by CSS custom property name using enhanced mapping
    */
   private findTokenByCustomPropertyName(customPropName: string): TokenInfo | undefined {
-    // Try to find a token that matches the custom property name
-    const cleanName = customPropName.replace(/^--/, '');
+    const cleanProp = customPropName.toLowerCase().replace(/^--/, '');
     
-    // Direct name match
+    // Direct name match first
     for (const token of this.tokens) {
-      if (token.name === cleanName || token.name === customPropName) {
+      if (token.name === cleanProp || token.name === customPropName) {
         return token;
       }
     }
     
-    // Fuzzy match based on name similarity
+    // Use the CSS mapping for comprehensive matching
+    const cssMapping = this.generateTokenToCSSMapping();
+    for (const [tokenName, cssProps] of cssMapping.entries()) {
+      for (const cssProp of cssProps) {
+        if (cssProp.toLowerCase() === `--${cleanProp}` || cssProp.toLowerCase() === customPropName.toLowerCase()) {
+          return this.tokens.find(t => t.name === tokenName);
+        }
+      }
+    }
+    
+    // Enhanced fuzzy match with pattern recognition
+    const propParts = cleanProp.split(/[-_]/);
+    
     for (const token of this.tokens) {
-      const tokenNameParts = token.name.toLowerCase().split(/[.-_]/);
-      const propNameParts = cleanName.toLowerCase().split(/[.-_]/);
+      const tokenParts = token.name.toLowerCase().split(/[.-_]/);
       
-      // If token name parts are contained in prop name parts, it's likely a match
-      if (tokenNameParts.every(part => propNameParts.includes(part))) {
+      // Check if most token parts are present in prop name
+      const matchedParts = tokenParts.filter(part => 
+        propParts.some(propPart => 
+          propPart.includes(part) || part.includes(propPart) || 
+          propPart === part
+        )
+      );
+      
+      // Consider it a match if 70% or more parts match
+      if (matchedParts.length / tokenParts.length >= 0.7) {
         return token;
       }
+    }
+    
+    // Special case: handle theme prefixes (al-theme, bs, md-sys, etc.)
+    const withoutPrefix = cleanProp.replace(/^(al-theme|al|bs|md-sys|theme)-/, '');
+    if (withoutPrefix !== cleanProp) {
+      return this.findTokenByCustomPropertyName(`--${withoutPrefix}`);
     }
     
     return undefined;

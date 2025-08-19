@@ -20,13 +20,25 @@ export class TokenAuditor {
     const detailedPaths: any[] = [];
     const allScannedPaths = new Set<string>();
     
-    // Common token file patterns - more focused
+    // Enhanced token file patterns for tiered structures
     const tokenFilePatterns = [
       // Specific token directories
       '**/tokens/*.{json,js,ts}',
       '**/design-tokens/*.{json,js,ts}',
       '**/tokens/!(*.d).{json,js,ts}', // Exclude .d.ts files
       '**/design-system/tokens/**/*.{json,js,ts}',
+      
+      // Tiered token structure patterns (Altitude-style)
+      '**/styles/tokens/**/*.json',
+      '**/libs/*/styles/tokens/**/*.json',
+      '**/packages/*/styles/tokens/**/*.json',
+      '**/styles/dist/tokens.json', // Compiled tokens
+      '**/dist/tokens/*.json',
+      
+      // Web component patterns
+      '**/components/**/*.scss',
+      '**/web-components/**/*.scss',
+      '**/libs/*/components/**/*.scss',
       
       // Common token file names
       'tokens.{json,js,ts}',

@@ -98,6 +98,7 @@ export class TokenMatcher {
   // Enhanced token name mapping with O(1) lookups
   private tokenNameMap: Map<string, TokenInfo> = new Map();
   private semanticMap: Map<string, TokenInfo> = new Map();
+  private cssPropertyMap: Map<string, TokenInfo> = new Map(); // CSS custom property mapping
   
   // Performance optimization: Spatial indexing for colors
   private colorSpatialIndex: Map<string, ColorBucket> = new Map();
@@ -192,6 +193,7 @@ export class TokenMatcher {
     this.allTokensSet.clear();
     this.tokenNameMap.clear();
     this.semanticMap.clear();
+    this.cssPropertyMap.clear();
     this.colorSpatialIndex.clear();
     this.tokenTrie = new TokenTrie();
     this.memoCache.clearCache();
@@ -202,6 +204,9 @@ export class TokenMatcher {
     
     // Map by full name
     this.tokenNameMap.set(tokenNameLower, token);
+    
+    // Build CSS custom property mappings
+    this.buildCSSPropertyMappings(token);
     
     // Map by various name variations for fast semantic lookup
     const nameParts = tokenNameLower.split(/[.-_]/);
@@ -230,6 +235,48 @@ export class TokenMatcher {
       const spaceName = tokenNameLower.replace(/spac(ing|e)[.-_]/i, '');
       if (!this.semanticMap.has(spaceName)) {
         this.semanticMap.set(spaceName, token);
+      }
+    }
+  }
+
+  /**
+   * Build CSS custom property mappings for different naming conventions
+   */
+  private buildCSSPropertyMappings(token: TokenInfo): void {
+    const tokenPath = token.name.toLowerCase();
+    
+    // Generate various CSS custom property conventions
+    const cssProperties: string[] = [
+      // Standard: --color-primary-500
+      `--${tokenPath.replace(/\./g, '-')}`,
+      
+      // Altitude-style: --al-theme-color-primary-500
+      `--al-theme-${tokenPath.replace(/\./g, '-')}`,
+      
+      // Alternative: --al-color-primary-500
+      `--al-${tokenPath.replace(/\./g, '-')}`,
+      
+      // Theme-prefixed: --theme-color-primary-500
+      `--theme-${tokenPath.replace(/\./g, '-')}`,
+      
+      // Bootstrap-style: --bs-primary-500
+      `--bs-${tokenPath.replace(/\./g, '-')}`,
+      
+      // Material-style: --md-sys-color-primary
+      `--md-sys-${tokenPath.replace(/\./g, '-')}`,
+    ];
+    
+    // Add semantic shortcuts for deep tokens
+    const pathParts = tokenPath.split('.');
+    if (pathParts.length > 2) {
+      // --primary-500 from color.primary.500
+      cssProperties.push(`--${pathParts.slice(1).join('-')}`);
+    }
+    
+    // Map all variations to the token
+    for (const cssProp of cssProperties) {
+      if (!this.cssPropertyMap.has(cssProp)) {
+        this.cssPropertyMap.set(cssProp, token);
       }
     }
   }
@@ -272,6 +319,16 @@ export class TokenMatcher {
 
     const normalizedValue = value.trim().toLowerCase();
     let result: TokenInfo | undefined;
+
+    // Check if this is a CSS custom property first
+    if (normalizedValue.startsWith('var(--') || normalizedValue.startsWith('--')) {
+      const cssProp = normalizedValue.replace(/^var\(/, '').replace(/\)$/, '');
+      result = this.cssPropertyMap.get(cssProp);
+      if (result) {
+        this.memoCache.exactMatch.set(cacheKey, result);
+        return result;
+      }
+    }
 
     // Fast path: Direct lookup by type
     if (type === 'color' || this.isColorValue(value)) {
