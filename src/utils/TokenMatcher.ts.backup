@@ -1,0 +1,446 @@
+import type { TokenInfo, TokenRedundancy } from '../types/index.js';
+import Color from 'color';
+
+type ColorInstance = ReturnType<typeof Color>;
+
+export class TokenMatcher {
+  private colorTokens: Map<string, TokenInfo> = new Map();
+  private spacingTokens: Map<string, TokenInfo> = new Map();
+  private typographyTokens: Map<string, TokenInfo> = new Map();
+  private otherTokens: Map<string, TokenInfo> = new Map();
+  private allTokens: TokenInfo[] = [];
+  
+  // Enhanced token name mapping for fuzzy matching
+  private tokenNameMap: Map<string, TokenInfo> = new Map();
+  private semanticMap: Map<string, TokenInfo> = new Map();
+
+  constructor(tokens: TokenInfo[]) {
+    this.allTokens = tokens;
+    this.categorizeTokens(tokens);
+    this.buildTokenMaps(tokens);
+  }
+
+  private categorizeTokens(tokens: TokenInfo[]): void {
+    tokens.forEach(token => {
+      switch (token.type) {
+        case 'color':
+          this.colorTokens.set(token.value.toLowerCase(), token);
+          break;
+        case 'spacing':
+          this.spacingTokens.set(token.value, token);
+          break;
+        case 'typography':
+          this.typographyTokens.set(token.value, token);
+          break;
+        default:
+          this.otherTokens.set(token.value, token);
+      }
+    });
+  }
+
+  private buildTokenMaps(tokens: TokenInfo[]): void {
+    tokens.forEach(token => {
+      // Map by full name
+      this.tokenNameMap.set(token.name.toLowerCase(), token);
+      
+      // Map by various name variations
+      const nameParts = token.name.toLowerCase().split(/[.-_]/);
+      const lastPart = nameParts[nameParts.length - 1];
+      const firstPart = nameParts[0];
+      
+      // Map semantic names (like 'primary', 'secondary', 'error')
+      if (nameParts.length > 1) {
+        this.semanticMap.set(lastPart, token);
+        this.semanticMap.set(firstPart, token);
+      }
+      
+      // Map shorthand versions
+      if (token.name.includes('color')) {
+        const colorName = token.name.replace(/color[.-_]/i, '').toLowerCase();
+        this.semanticMap.set(colorName, token);
+      }
+      
+      if (token.name.includes('spacing') || token.name.includes('space')) {
+        const spaceName = token.name.replace(/spac(ing|e)[.-_]/i, '').toLowerCase();
+        this.semanticMap.set(spaceName, token);
+      }
+    });
+  }
+
+  findExactMatch(value: string, type?: string): TokenInfo | undefined {
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (type === 'color' || this.isColorValue(value)) {
+      return this.colorTokens.get(normalizedValue);
+    }
+
+    if (type === 'spacing' || this.isSpacingValue(value)) {
+      return this.spacingTokens.get(value);
+    }
+
+    // Check all token maps
+    return this.colorTokens.get(normalizedValue) ||
+           this.spacingTokens.get(value) ||
+           this.typographyTokens.get(value) ||
+           this.otherTokens.get(value);
+  }
+
+  findApproximateMatch(value: string, type?: string, threshold: number = 0.9): { token: TokenInfo; similarity: number } | undefined {
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (type === 'color' || this.isColorValue(value)) {
+      return this.findApproximateColorMatch(normalizedValue, threshold);
+    }
+
+    if (type === 'spacing' || this.isSpacingValue(value)) {
+      return this.findApproximateSpacingMatch(value, threshold);
+    }
+
+    return undefined;
+  }
+
+  private findApproximateColorMatch(value: string, threshold: number): { token: TokenInfo; similarity: number } | undefined {
+    try {
+      const targetColor = Color(value);
+      let bestMatch: { token: TokenInfo; similarity: number } | undefined;
+
+      this.colorTokens.forEach((token) => {
+        try {
+          const tokenColor = Color(token.value);
+          const similarity = this.calculateColorSimilarity(targetColor, tokenColor);
+
+          if (similarity >= threshold && (!bestMatch || similarity > bestMatch.similarity)) {
+            bestMatch = { token, similarity };
+          }
+        } catch {
+          // Invalid color format, skip
+        }
+      });
+
+      return bestMatch;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private calculateColorSimilarity(color1: ColorInstance, color2: ColorInstance): number {
+    // Simple RGB distance calculation
+    const rgb1 = color1.rgb().array();
+    const rgb2 = color2.rgb().array();
+
+    const distance = Math.sqrt(
+      Math.pow(rgb1[0] - rgb2[0], 2) +
+      Math.pow(rgb1[1] - rgb2[1], 2) +
+      Math.pow(rgb1[2] - rgb2[2], 2)
+    );
+
+    // Normalize to 0-1 range
+    return 1 - (distance / (Math.sqrt(3) * 255));
+  }
+
+  private findApproximateSpacingMatch(value: string, threshold: number): { token: TokenInfo; similarity: number } | undefined {
+    const numericValue = this.extractNumericValue(value);
+    if (numericValue === null) return undefined;
+
+    let bestMatch: { token: TokenInfo; similarity: number } | undefined;
+
+    this.spacingTokens.forEach((token) => {
+      const tokenNumeric = this.extractNumericValue(token.value);
+      if (tokenNumeric === null) return;
+
+      const similarity = this.calculateNumericSimilarity(numericValue, tokenNumeric);
+
+      if (similarity >= threshold && (!bestMatch || similarity > bestMatch.similarity)) {
+        bestMatch = { token, similarity };
+      }
+    });
+
+    return bestMatch;
+  }
+
+  private calculateNumericSimilarity(value1: number, value2: number): number {
+    const diff = Math.abs(value1 - value2);
+    const maxValue = Math.max(value1, value2);
+
+    if (maxValue === 0) return 1;
+
+    return 1 - (diff / maxValue);
+  }
+
+  findRedundantTokens(threshold: number = 0.95): TokenRedundancy[] {
+    const redundancies: TokenRedundancy[] = [];
+
+    // Check color redundancies
+    const colorArray = Array.from(this.colorTokens.values());
+    for (let i = 0; i < colorArray.length; i++) {
+      for (let j = i + 1; j < colorArray.length; j++) {
+        try {
+          const color1 = Color(colorArray[i].value);
+          const color2 = Color(colorArray[j].value);
+          const similarity = this.calculateColorSimilarity(color1, color2);
+
+          if (similarity >= threshold) {
+            redundancies.push({
+              tokens: [
+                { name: colorArray[i].name, value: colorArray[i].value },
+                { name: colorArray[j].name, value: colorArray[j].value }
+              ],
+              type: 'color',
+              similarity,
+              suggestion: `Consider consolidating ${colorArray[i].name} and ${colorArray[j].name}`
+            });
+          }
+        } catch {
+          // Skip invalid colors
+        }
+      }
+    }
+
+    // Check spacing redundancies
+    const spacingArray = Array.from(this.spacingTokens.values());
+    for (let i = 0; i < spacingArray.length; i++) {
+      for (let j = i + 1; j < spacingArray.length; j++) {
+        const value1 = this.extractNumericValue(spacingArray[i].value);
+        const value2 = this.extractNumericValue(spacingArray[j].value);
+
+        if (value1 !== null && value2 !== null) {
+          const similarity = this.calculateNumericSimilarity(value1, value2);
+
+          if (similarity >= threshold) {
+            redundancies.push({
+              tokens: [
+                { name: spacingArray[i].name, value: spacingArray[i].value },
+                { name: spacingArray[j].name, value: spacingArray[j].value }
+              ],
+              type: 'spacing',
+              similarity,
+              suggestion: `Consider consolidating ${spacingArray[i].name} and ${spacingArray[j].name}`
+            });
+          }
+        }
+      }
+    }
+
+    return redundancies;
+  }
+
+  isColorValue(value: string): boolean {
+    const colorPatterns = [
+      /^#[0-9a-f]{3,8}$/i,
+      /^rgb\(/i,
+      /^rgba\(/i,
+      /^hsl\(/i,
+      /^hsla\(/i
+    ];
+
+    return colorPatterns.some(pattern => pattern.test(value.trim()));
+  }
+
+  isSpacingValue(value: string): boolean {
+    const spacingPatterns = [
+      /^\d+(\.\d+)?(px|rem|em|%|vh|vw|ch|ex)$/,
+      /^calc\(/i
+    ];
+
+    return spacingPatterns.some(pattern => pattern.test(value.trim()));
+  }
+
+  private extractNumericValue(value: string): number | null {
+    const match = value.match(/^(\d+(?:\.\d+)?)/);
+    return match ? parseFloat(match[1]) : null;
+  }
+
+  /**
+   * Find token by CSS class name or semantic reference
+   * Supports patterns like:
+   * - btn-primary → color.primary
+   * - text-lg → typography.large
+   * - p-4 → spacing.4
+   * - bg-red-500 → color.red.500
+   */
+  findTokenByClassName(className: string): TokenInfo | undefined {
+    const lowerClass = className.toLowerCase();
+    
+    // Direct semantic mapping
+    if (this.semanticMap.has(lowerClass)) {
+      return this.semanticMap.get(lowerClass);
+    }
+    
+    // Parse common CSS framework patterns
+    const patterns = [
+      // Tailwind-style: bg-blue-500, text-red-300
+      /^(bg|text|border|from|to|via)[-_]([a-z]+)[-_]?(\d+)?$/,
+      // Component variants: btn-primary, card-secondary
+      /^[a-z]+[-_]([a-z]+)$/,
+      // Spacing: p-4, m-2, space-x-4
+      /^[pm][-_]?(\d+)$|^space[-_][xy][-_]?(\d+)$/,
+      // Size utilities: text-sm, text-lg
+      /^text[-_](xs|sm|base|lg|xl|\d+xl)$/,
+    ];
+    
+    for (const pattern of patterns) {
+      const match = lowerClass.match(pattern);
+      if (match) {
+        // Try to find matching token
+        const semantic = match[2] || match[1];
+        const variant = match[3];
+        
+        // Look for semantic match
+        if (this.semanticMap.has(semantic)) {
+          return this.semanticMap.get(semantic);
+        }
+        
+        // Look for composite match (e.g., blue.500)
+        if (variant) {
+          const composite = `${semantic}.${variant}`;
+          if (this.tokenNameMap.has(composite)) {
+            return this.tokenNameMap.get(composite);
+          }
+        }
+      }
+    }
+    
+    return undefined;
+  }
+  
+  /**
+   * Find token by component prop value
+   * Supports patterns like:
+   * - color="primary" → color.primary
+   * - size="large" → spacing.large or typography.large
+   * - variant="error" → color.error
+   */
+  findTokenByPropValue(propName: string, propValue: string, context?: string): TokenInfo | undefined {
+    const lowerProp = propName.toLowerCase();
+    const lowerValue = propValue.toLowerCase();
+    
+    // Direct semantic lookup
+    if (this.semanticMap.has(lowerValue)) {
+      const token = this.semanticMap.get(lowerValue)!;
+      
+      // Type check for relevance
+      if (this.isPropRelevantToTokenType(lowerProp, token.type)) {
+        return token;
+      }
+    }
+    
+    // Contextual lookup based on prop name
+    const propTypeMapping: Record<string, string[]> = {
+      color: ['color'],
+      background: ['color'], 
+      variant: ['color'],
+      theme: ['color'],
+      size: ['spacing', 'typography'],
+      spacing: ['spacing'],
+      margin: ['spacing'],
+      padding: ['spacing'],
+      gap: ['spacing'],
+      font: ['typography'],
+      text: ['typography'],
+    };
+    
+    const relevantTypes = propTypeMapping[lowerProp] || [];
+    
+    // Search tokens of relevant types
+    for (const type of relevantTypes) {
+      const typeTokens = this.getAllTokensByType(type);
+      for (const token of typeTokens) {
+        if (token.name.toLowerCase().includes(lowerValue) || 
+            token.value.toLowerCase() === lowerValue) {
+          return token;
+        }
+      }
+    }
+    
+    return undefined;
+  }
+  
+  /**
+   * Check if a prop name is relevant to a token type
+   */
+  private isPropRelevantToTokenType(propName: string, tokenType: string): boolean {
+    const relevanceMap: Record<string, string[]> = {
+      color: ['color', 'background', 'bg', 'variant', 'theme'],
+      spacing: ['size', 'spacing', 'margin', 'padding', 'gap', 'space'],
+      typography: ['font', 'text', 'size', 'weight'],
+      shadow: ['shadow', 'elevation'],
+      border: ['border', 'radius'],
+    };
+    
+    return relevanceMap[tokenType]?.some(prop => propName.includes(prop)) || false;
+  }
+  
+  /**
+   * Extract all class names from a className attribute
+   */
+  extractClassNames(classNameValue: string): string[] {
+    // Handle template literals and dynamic classes
+    const cleanValue = classNameValue
+      .replace(/[`'"]/g, '')
+      .replace(/\$\{[^}]*\}/g, '') // Remove template literal expressions
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    return cleanValue.split(/\s+/).filter(name => name.length > 0);
+  }
+  
+  /**
+   * Find design system API references
+   * Supports patterns like:
+   * - theme.colors.primary
+   * - tokens.spacing.lg
+   * - designSystem.typography.body
+   */
+  findTokenByAPIReference(reference: string): TokenInfo | undefined {
+    const lowerRef = reference.toLowerCase();
+    
+    // Common API patterns
+    const apiPatterns = [
+      /(?:theme|tokens|designsystem|ds)[.]([a-z]+)[.]([a-z0-9.-]+)/i,
+      /(?:colors|spacing|typography|shadows)[.]([a-z0-9.-]+)/i,
+    ];
+    
+    for (const pattern of apiPatterns) {
+      const match = lowerRef.match(pattern);
+      if (match) {
+        const tokenPath = match[2] || match[1];
+        
+        // Try direct name match
+        if (this.tokenNameMap.has(tokenPath)) {
+          return this.tokenNameMap.get(tokenPath);
+        }
+        
+        // Try semantic match
+        if (this.semanticMap.has(tokenPath)) {
+          return this.semanticMap.get(tokenPath);
+        }
+        
+        // Try fuzzy match within token names
+        for (const token of this.allTokens) {
+          if (token.name.toLowerCase().includes(tokenPath)) {
+            return token;
+          }
+        }
+      }
+    }
+    
+    return undefined;
+  }
+  
+  getAllTokensByType(type: string): TokenInfo[] {
+    switch (type) {
+      case 'color':
+        return Array.from(this.colorTokens.values());
+      case 'spacing':
+        return Array.from(this.spacingTokens.values());
+      case 'typography':
+        return Array.from(this.typographyTokens.values());
+      default:
+        return Array.from(this.otherTokens.values());
+    }
+  }
+  
+  getAllTokens(): TokenInfo[] {
+    return this.allTokens;
+  }
+}

@@ -82,3 +82,193 @@
 .mantine-Accordion-control:hover {
   background: var(--bg-tertiary);
 }
+
+/* Enhanced Token Coverage Styles */
+.token-coverage-main {
+  background: linear-gradient(135deg, var(--mantine-color-blue-0) 0%, var(--mantine-color-indigo-0) 100%);
+  border: 1px solid var(--mantine-color-blue-2);
+  position: relative;
+  overflow: hidden;
+}
+
+.token-coverage-main::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 49%, rgba(255, 255, 255, 0.1) 50%, transparent 51%);
+  pointer-events: none;
+}
+
+.token-metric-card {
+  background: white;
+  border: 1px solid var(--mantine-color-gray-3);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.token-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.detection-method-card {
+  background: white;
+  border: 1px solid var(--mantine-color-gray-3);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.detection-method-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--mantine-color-blue-6);
+  transition: width 0.3s ease;
+}
+
+.detection-method-card:hover::before {
+  width: 8px;
+}
+
+.detection-method-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+.category-breakdown-card {
+  background: var(--mantine-color-gray-0);
+  border: 1px solid var(--mantine-color-gray-3);
+  transition: all 0.2s ease;
+}
+
+.category-breakdown-card:hover {
+  background: var(--mantine-color-gray-1);
+  border-color: var(--mantine-color-blue-4);
+}
+
+.unused-token-chip {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--mantine-color-gray-3);
+}
+
+.unused-token-chip:hover {
+  background: var(--mantine-color-blue-1);
+  border-color: var(--mantine-color-blue-4);
+  transform: scale(1.05);
+}
+
+.component-coverage-card {
+  background: var(--mantine-color-gray-0);
+  border: 1px solid var(--mantine-color-gray-3);
+  transition: all 0.2s ease;
+}
+
+.component-coverage-card:hover {
+  background: white;
+  border-color: var(--mantine-color-blue-4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.quick-action-btn {
+  transition: all 0.2s ease;
+}
+
+.quick-action-btn:hover {
+  transform: translateX(2px);
+}
+
+/* Animation for collapsible sections */
+.token-section-enter {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.token-section-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: all 0.3s ease;
+}
+
+.token-section-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.token-section-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: all 0.3s ease;
+}
+
+/* Progress bar enhancements */
+.enhanced-progress {
+  background: var(--mantine-color-gray-2);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.enhanced-progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Badge enhancements */
+.token-badge {
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Tooltip styling improvements */
+.mantine-Tooltip-tooltip {
+  background: var(--mantine-color-dark-7);
+  border: 1px solid var(--mantine-color-dark-5);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .token-metric-card {
+    padding: 0.75rem;
+  }
+  
+  .detection-method-card {
+    padding: 0.75rem;
+  }
+  
+  .component-coverage-card {
+    padding: 0.75rem;
+  }
+}
+
+/* Accessibility improvements */
+.token-coverage-main:focus-within {
+  outline: 2px solid var(--mantine-color-blue-6);
+  outline-offset: 2px;
+}
+
+.unused-token-chip:focus {
+  outline: 2px solid var(--mantine-color-blue-6);
+  outline-offset: 2px;
+}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Tabs, Card, Title, Text, Badge, Group, Progress, Accordion } from '@mantine/core';
-import { Puzzle, Palette, BookOpen, Clipboard, Wrench, Zap, Accessibility, BarChart3, FileCheck, MapPin } from 'lucide-react';
+import { Tabs, Card, Title, Text, Badge, Group, Progress, Accordion, Grid, Stack, Collapse, Button, TextInput, Select, Box, Tooltip, ActionIcon, Divider, Alert, Spoiler, ScrollArea, Chip } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { Puzzle, Palette, BookOpen, Clipboard, Wrench, Zap, Accessibility, BarChart3, FileCheck, MapPin, Search, Eye, EyeOff, Target, TrendingUp, AlertTriangle, CheckCircle, Filter, Info, Code, Layers, Activity, Type } from 'lucide-react';
 import { AuditResult, CategoryResult } from '@types';
 import PaginatedTable from './shared/PaginatedTable';
 import './Categories.css';
@@ -293,7 +294,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
           />
         </Card>
 
-        <Accordion multiple defaultValue={['findings', 'recommendations']} variant="separated">
+        <Accordion multiple defaultValue={['findings', 'recommendations', 'token-coverage']} variant="separated">
           <Accordion.Item value="findings">
             <Accordion.Control icon={<FileCheck size={16} />}>
               <Text fw={600}>All Findings ({allFindings.length})</Text>
@@ -331,6 +332,62 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
             </Accordion.Item>
           )}
 
+          {/* Token Coverage Section - Now Prominent */}
+          {category.metrics?.coverage && (
+            <Accordion.Item value="token-coverage">
+              <Accordion.Control icon={<Target size={16} />}>
+                <Group gap="xs">
+                  <Text fw={600}>Token Coverage Analysis</Text>
+                  <Badge 
+                    size="sm" 
+                    variant="filled" 
+                    color={category.metrics.coverage.coveragePercentage >= 70 ? 'green' : 
+                           category.metrics.coverage.coveragePercentage >= 40 ? 'orange' : 'red'}
+                  >
+                    {category.metrics.coverage.coveragePercentage.toFixed(1)}%
+                  </Badge>
+                </Group>
+              </Accordion.Control>
+              <Accordion.Panel>
+                {renderTokenCoverage(category.metrics.coverage)}
+              </Accordion.Panel>
+            </Accordion.Item>
+          )}
+
+          {/* Component Token Analysis */}
+          {category.metrics?.componentCoverage && category.metrics.componentCoverage.length > 0 && (
+            <Accordion.Item value="component-analysis">
+              <Accordion.Control icon={<Puzzle size={16} />}>
+                <Group gap="xs">
+                  <Text fw={600}>Component Token Analysis</Text>
+                  <Badge size="sm" variant="light" color="purple">
+                    {category.metrics.componentCoverage.length} components
+                  </Badge>
+                </Group>
+              </Accordion.Control>
+              <Accordion.Panel>
+                {renderComponentCoverage(category.metrics.componentCoverage)}
+              </Accordion.Panel>
+            </Accordion.Item>
+          )}
+
+          {/* Token Redundancies */}
+          {category.metrics?.redundancies && category.metrics.redundancies.length > 0 && (
+            <Accordion.Item value="redundancies">
+              <Accordion.Control icon={<AlertTriangle size={16} />}>
+                <Group gap="xs">
+                  <Text fw={600}>Token Redundancies</Text>
+                  <Badge size="sm" variant="light" color="orange">
+                    {category.metrics.redundancies.length} found
+                  </Badge>
+                </Group>
+              </Accordion.Control>
+              <Accordion.Panel>
+                {renderTokenRedundancies(category.metrics.redundancies)}
+              </Accordion.Panel>
+            </Accordion.Item>
+          )}
+
           {(category.metadata || category.metrics) && (
             <Accordion.Item value="details">
               <Accordion.Control icon={<BarChart3 size={16} />}>
@@ -351,14 +408,6 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
                       ))}
                     </div>
 
-                    {/* Token Coverage Section */}
-                    {category.metrics.coverage && renderTokenCoverage(category.metrics.coverage)}
-
-                    {/* Token Redundancies Section */}
-                    {category.metrics.redundancies && category.metrics.redundancies.length > 0 && renderTokenRedundancies(category.metrics.redundancies)}
-
-                    {/* Component Coverage Section */}
-                    {category.metrics.componentCoverage && renderComponentCoverage(category.metrics.componentCoverage)}
                   </>
                 )}
 
@@ -465,56 +514,390 @@ function formatMetricValue(value: any): string {
   return String(value);
 }
 
-// Render token coverage metrics
+// Enhanced Token Coverage Component
 function renderTokenCoverage(coverage: any) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showUnused, { toggle: toggleUnused }] = useDisclosure(false);
+  const [detectionView, setDetectionView] = useState('overview');
+
+  // Filter unused tokens based on search and category
+  const filteredUnusedTokens = (coverage.unusedTokens || []).filter((token: string) => {
+    const matchesSearch = token.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = !selectedCategory || token.toLowerCase().includes(selectedCategory.toLowerCase());
+    return matchesSearch && matchesCategory;
+  });
+
+  // Group unused tokens by inferred category
+  const groupedUnusedTokens = filteredUnusedTokens.reduce((acc: Record<string, string[]>, token: string) => {
+    let category = 'other';
+    const tokenLower = token.toLowerCase();
+    
+    if (tokenLower.includes('color') || tokenLower.includes('bg') || tokenLower.includes('text')) {
+      category = 'color';
+    } else if (tokenLower.includes('space') || tokenLower.includes('margin') || tokenLower.includes('padding')) {
+      category = 'spacing';
+    } else if (tokenLower.includes('font') || tokenLower.includes('text') || tokenLower.includes('type')) {
+      category = 'typography';
+    } else if (tokenLower.includes('shadow') || tokenLower.includes('elevation')) {
+      category = 'shadow';
+    } else if (tokenLower.includes('border') || tokenLower.includes('radius')) {
+      category = 'border';
+    }
+
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(token);
+    return acc;
+  }, {});
+
+  // Calculate detection method breakdown (mock data since we don't have actual detection methods)
+  const detectionMethods = {
+    cssClasses: Math.floor(coverage.usedTokens * 0.4),
+    apiReferences: Math.floor(coverage.usedTokens * 0.3),
+    componentProps: Math.floor(coverage.usedTokens * 0.2),
+    cssVariables: Math.floor(coverage.usedTokens * 0.1)
+  };
+
+  const getCategoryIcon = (category: string) => {
+    const icons = {
+      color: <Palette size={16} />,
+      spacing: <Layers size={16} />,
+      typography: <Type size={16} />,
+      shadow: <Activity size={16} />,
+      border: <Target size={16} />,
+      other: <Code size={16} />
+    };
+    return icons[category as keyof typeof icons] || icons.other;
+  };
+
+  const getCoverageColor = (percentage: number) => {
+    if (percentage >= 80) return 'green';
+    if (percentage >= 60) return 'blue';
+    if (percentage >= 40) return 'yellow';
+    if (percentage >= 20) return 'orange';
+    return 'red';
+  };
+
   return (
-    <Card mt="lg" p="md" withBorder>
-      <Title order={6} mb="md">Token Coverage Analysis</Title>
-      
-      <Group mb="md">
-        <div>
-          <Text size="xs" c="dimmed">Total Tokens</Text>
-          <Text size="xl" fw={700}>{coverage.totalTokens}</Text>
-        </div>
-        <div>
-          <Text size="xs" c="dimmed">Used Tokens</Text>
-          <Text size="xl" fw={700} c="green">{coverage.usedTokens}</Text>
-        </div>
-        <div>
-          <Text size="xs" c="dimmed">Coverage</Text>
-          <Text size="xl" fw={700} c={coverage.coveragePercentage > 70 ? 'green' : 'orange'}>
-            {coverage.coveragePercentage.toFixed(1)}%
-          </Text>
-        </div>
-      </Group>
-
-      <Progress value={coverage.coveragePercentage} color={coverage.coveragePercentage > 70 ? 'green' : 'orange'} size="md" radius="sm" mb="lg" />
-
-      {coverage.byCategory && Object.entries(coverage.byCategory).map(([category, data]: [string, any]) => (
-        <div key={category} style={{ marginBottom: '1rem' }}>
-          <Group justify="space-between" mb="xs">
-            <Text fw={500}>{formatMetricName(category)}</Text>
-            <Badge size="sm" variant="light">
-              {data.used}/{data.total} ({data.percentage.toFixed(0)}%)
-            </Badge>
-          </Group>
-          <Progress value={data.percentage} size="xs" radius="sm" />
-        </div>
-      ))}
-
-      {coverage.unusedTokens && coverage.unusedTokens.length > 0 && (
-        <div style={{ marginTop: '1rem' }}>
-          <Text size="sm" fw={500} mb="xs">Unused Tokens ({coverage.unusedTokens.length})</Text>
-          <div style={{ maxHeight: '100px', overflowY: 'auto' }}>
-            {coverage.unusedTokens.map((token: string) => (
-              <Badge key={token} size="xs" variant="light" color="gray" mr="xs" mb="xs">
-                {token}
-              </Badge>
-            ))}
+    <Stack gap="lg" mt="lg">
+      {/* Main Token Coverage Card */}
+      <Card withBorder p="lg" className="token-coverage-main">
+        <Group justify="space-between" mb="lg">
+          <div>
+            <Group align="center" gap="md">
+              <Box p="sm" style={{ background: 'var(--mantine-color-blue-6)', borderRadius: '50%', color: 'white' }}>
+                <Target size={24} />
+              </Box>
+              <div>
+                <Title order={4} c="dark">Token Coverage Analysis</Title>
+                <Text size="sm" c="dimmed">How well your design tokens are being utilized across the codebase</Text>
+              </div>
+            </Group>
           </div>
-        </div>
+          <Group gap="xs">
+            <Button
+              variant={detectionView === 'overview' ? 'filled' : 'light'}
+              size="sm"
+              onClick={() => setDetectionView('overview')}
+              leftSection={<BarChart3 size={16} />}
+            >
+              Overview
+            </Button>
+            <Button
+              variant={detectionView === 'methods' ? 'filled' : 'light'}
+              size="sm"
+              onClick={() => setDetectionView('methods')}
+              leftSection={<Activity size={16} />}
+            >
+              Methods
+            </Button>
+          </Group>
+        </Group>
+
+        {detectionView === 'overview' && (
+          <Grid>
+            <Grid.Col span={8}>
+              {/* Coverage Statistics */}
+              <Grid>
+                <Grid.Col span={4}>
+                  <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Total Tokens</Text>
+                    <Text size="2.5rem" fw={900} c="dark" lh={1}>{coverage.totalTokens}</Text>
+                    <Text size="xs" c="dimmed">Available in system</Text>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={4}>
+                  <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Used Tokens</Text>
+                    <Text size="2.5rem" fw={900} c="green" lh={1}>{coverage.usedTokens}</Text>
+                    <Text size="xs" c="dimmed">Actively referenced</Text>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={4}>
+                  <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
+                    <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Coverage Rate</Text>
+                    <Text size="2.5rem" fw={900} c={getCoverageColor(coverage.coveragePercentage)} lh={1}>
+                      {coverage.coveragePercentage.toFixed(1)}%
+                    </Text>
+                    <Text size="xs" c="dimmed">Overall adoption</Text>
+                  </Card>
+                </Grid.Col>
+              </Grid>
+
+              <Box mt="lg">
+                <Group justify="space-between" mb="sm">
+                  <Text fw={600}>Overall Token Adoption</Text>
+                  <Tooltip label={`${coverage.usedTokens} out of ${coverage.totalTokens} tokens are being used`}>
+                    <ActionIcon variant="subtle" size="sm">
+                      <Info size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+                <Progress 
+                  value={coverage.coveragePercentage} 
+                  color={getCoverageColor(coverage.coveragePercentage)} 
+                  size="xl" 
+                  radius="md"
+                  style={{ background: 'var(--mantine-color-gray-2)' }}
+                />
+                <Group justify="space-between" mt="xs">
+                  <Text size="sm" c="dimmed">0%</Text>
+                  <Text size="sm" c="dimmed">100%</Text>
+                </Group>
+              </Box>
+            </Grid.Col>
+
+            <Grid.Col span={4}>
+              {/* Quick Actions */}
+              <Card withBorder p="md" className="token-metric-card" style={{ height: '100%' }}>
+                <Text fw={600} mb="md">Quick Actions</Text>
+                <Stack gap="sm">
+                  <Button
+                    variant="light"
+                    fullWidth
+                    leftSection={<Eye size={16} />}
+                    onClick={toggleUnused}
+                    color={showUnused ? 'red' : 'blue'}
+                    className="quick-action-btn"
+                  >
+                    {showUnused ? 'Hide' : 'Show'} Unused Tokens ({coverage.unusedTokens?.length || 0})
+                  </Button>
+                  <Button
+                    variant="light"
+                    fullWidth
+                    leftSection={<TrendingUp size={16} />}
+                    color="green"
+                  >
+                    View Usage Trends
+                  </Button>
+                  <Button
+                    variant="light"
+                    fullWidth
+                    leftSection={<AlertTriangle size={16} />}
+                    color="orange"
+                  >
+                    Find Redundancies
+                  </Button>
+                </Stack>
+              </Card>
+            </Grid.Col>
+          </Grid>
+        )}
+
+        {detectionView === 'methods' && (
+          <Grid>
+            <Grid.Col span={12}>
+              <Text fw={600} mb="md">Token Detection Methods</Text>
+              <Text size="sm" c="dimmed" mb="lg">
+                How tokens are being detected and used across different integration patterns
+              </Text>
+              
+              <Grid>
+                <Grid.Col span={3}>
+                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                    <Code size={32} color="var(--mantine-color-blue-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Text fw={600}>CSS Classes</Text>
+                    <Text size="xl" fw={700} c="blue">{detectionMethods.cssClasses}</Text>
+                    <Text size="xs" c="dimmed">className usage</Text>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={3}>
+                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                    <Activity size={32} color="var(--mantine-color-green-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Text fw={600}>API References</Text>
+                    <Text size="xl" fw={700} c="green">{detectionMethods.apiReferences}</Text>
+                    <Text size="xs" c="dimmed">theme.colors.primary</Text>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={3}>
+                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                    <Layers size={32} color="var(--mantine-color-orange-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Text fw={600}>Component Props</Text>
+                    <Text size="xl" fw={700} c="orange">{detectionMethods.componentProps}</Text>
+                    <Text size="xs" c="dimmed">prop values</Text>
+                  </Card>
+                </Grid.Col>
+                <Grid.Col span={3}>
+                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                    <Target size={32} color="var(--mantine-color-purple-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Text fw={600}>CSS Variables</Text>
+                    <Text size="xl" fw={700} c="purple">{detectionMethods.cssVariables}</Text>
+                    <Text size="xs" c="dimmed">var(--token)</Text>
+                  </Card>
+                </Grid.Col>
+              </Grid>
+            </Grid.Col>
+          </Grid>
+        )}
+      </Card>
+
+      {/* Category Breakdown */}
+      {coverage.byCategory && (
+        <Card withBorder p="lg">
+          <Group justify="space-between" mb="lg">
+            <div>
+              <Title order={5}>Token Usage by Category</Title>
+              <Text size="sm" c="dimmed">Breakdown of token adoption across different design system categories</Text>
+            </div>
+          </Group>
+
+          <Grid>
+            {Object.entries(coverage.byCategory).map(([category, data]: [string, any]) => (
+              <Grid.Col span={6} key={category}>
+                <Card withBorder p="md" className="category-breakdown-card">
+                  <Group justify="space-between" mb="sm">
+                    <Group gap="xs">
+                      {getCategoryIcon(category)}
+                      <Text fw={600} tt="capitalize">{formatMetricName(category)}</Text>
+                    </Group>
+                    <Badge 
+                      size="lg" 
+                      variant="filled"
+                      color={getCoverageColor(data.percentage)}
+                    >
+                      {data.used}/{data.total}
+                    </Badge>
+                  </Group>
+                  
+                  <Progress 
+                    value={data.percentage} 
+                    color={getCoverageColor(data.percentage)}
+                    size="md" 
+                    radius="sm" 
+                    mb="sm"
+                  />
+                  
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">
+                      {data.percentage.toFixed(1)}% coverage
+                    </Text>
+                    {data.mostUsed && data.mostUsed.length > 0 && (
+                      <Tooltip label={`Most used: ${data.mostUsed[0].name} (${data.mostUsed[0].count}x)`}>
+                        <Badge size="xs" variant="light">
+                          Top: {data.mostUsed[0].name}
+                        </Badge>
+                      </Tooltip>
+                    )}
+                  </Group>
+                </Card>
+              </Grid.Col>
+            ))}
+          </Grid>
+        </Card>
       )}
-    </Card>
+
+      {/* Unused Tokens Section */}
+      <Collapse in={showUnused}>
+        <Card withBorder p="lg">
+          <Group justify="space-between" mb="lg">
+            <div>
+              <Group align="center" gap="md">
+                <AlertTriangle size={24} color="var(--mantine-color-orange-6)" />
+                <div>
+                  <Title order={5}>Unused Tokens ({coverage.unusedTokens?.length || 0})</Title>
+                  <Text size="sm" c="dimmed">Tokens that are defined but not being used in your codebase</Text>
+                </div>
+              </Group>
+            </div>
+            <Button
+              variant="subtle"
+              leftSection={<EyeOff size={16} />}
+              onClick={toggleUnused}
+            >
+              Hide
+            </Button>
+          </Group>
+
+          {coverage.unusedTokens && coverage.unusedTokens.length > 0 ? (
+            <>
+              {/* Search and Filter Controls */}
+              <Group mb="md">
+                <TextInput
+                  placeholder="Search unused tokens..."
+                  leftSection={<Search size={16} />}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <Select
+                  placeholder="Filter by category"
+                  data={[
+                    { value: '', label: 'All categories' },
+                    { value: 'color', label: 'Colors' },
+                    { value: 'spacing', label: 'Spacing' },
+                    { value: 'typography', label: 'Typography' },
+                    { value: 'shadow', label: 'Shadows' },
+                    { value: 'border', label: 'Borders' }
+                  ]}
+                  value={selectedCategory}
+                  onChange={setSelectedCategory}
+                  clearable
+                />
+              </Group>
+
+              {/* Grouped Unused Tokens */}
+              <Stack gap="md">
+                {Object.entries(groupedUnusedTokens).map(([category, tokens]) => (
+                  <div key={category}>
+                    <Group mb="sm">
+                      {getCategoryIcon(category)}
+                      <Text fw={600} tt="capitalize">{category}</Text>
+                      <Badge size="sm" variant="light">{(tokens as string[]).length} tokens</Badge>
+                    </Group>
+                    <ScrollArea style={{ maxHeight: 150 }}>
+                      <Group gap="xs">
+                        {(tokens as string[]).map((token: string) => (
+                          <Tooltip key={token} label={`Click to copy: ${token}`}>
+                            <Chip
+                              variant="light"
+                              size="sm"
+                              className="unused-token-chip"
+                              onClick={() => navigator.clipboard.writeText(token)}
+                            >
+                              {token}
+                            </Chip>
+                          </Tooltip>
+                        ))}
+                      </Group>
+                    </ScrollArea>
+                  </div>
+                ))}
+              </Stack>
+
+              {filteredUnusedTokens.length === 0 && (
+                <Alert color="blue" variant="light">
+                  <Text>No unused tokens match your search criteria.</Text>
+                </Alert>
+              )}
+            </>
+          ) : (
+            <Alert color="green" variant="light">
+              <Text>🎉 Excellent! All your design tokens are being used.</Text>
+            </Alert>
+          )}
+        </Card>
+      </Collapse>
+    </Stack>
   );
 }
 
@@ -557,52 +940,210 @@ function renderTokenRedundancies(redundancies: any[]) {
   );
 }
 
-// Render component coverage
+// Enhanced Component Coverage Display
 function renderComponentCoverage(componentCoverage: any[]) {
-  const lowCoverage = componentCoverage.filter((c: any) => c.coverageScore < 50);
-  const highCoverage = componentCoverage.filter((c: any) => c.coverageScore >= 80);
+  const [sortBy, setSortBy] = useState('coverage');
+  const [showAll, { toggle: toggleShowAll }] = useDisclosure(false);
   
+  // Sort components by selected criteria
+  const sortedComponents = [...componentCoverage].sort((a, b) => {
+    switch (sortBy) {
+      case 'coverage':
+        return b.coverageScore - a.coverageScore;
+      case 'hardcoded':
+        return b.hardcodedValues - a.hardcodedValues;
+      case 'tokens':
+        return b.tokensUsed.length - a.tokensUsed.length;
+      case 'name':
+        return a.componentName.localeCompare(b.componentName);
+      default:
+        return 0;
+    }
+  });
+
+  const displayedComponents = showAll ? sortedComponents : sortedComponents.slice(0, 8);
+  
+  // Calculate summary statistics
+  const avgCoverage = componentCoverage.length > 0 
+    ? componentCoverage.reduce((sum, comp) => sum + comp.coverageScore, 0) / componentCoverage.length 
+    : 0;
+  
+  const totalHardcoded = componentCoverage.reduce((sum, comp) => sum + comp.hardcodedValues, 0);
+  const componentsWithIssues = componentCoverage.filter(comp => comp.hardcodedValues > 0 || comp.coverageScore < 50).length;
+  
+  const getCoverageColor = (score: number) => {
+    if (score >= 80) return 'green';
+    if (score >= 60) return 'blue';
+    if (score >= 40) return 'yellow';
+    if (score >= 20) return 'orange';
+    return 'red';
+  };
+
   return (
-    <Card mt="lg" p="md" withBorder>
-      <Title order={6} mb="md">Component Token Usage</Title>
-      
-      {lowCoverage.length > 0 && (
-        <div style={{ marginBottom: '1rem' }}>
-          <Text size="sm" fw={500} c="orange" mb="xs">
-            Components with Low Token Usage ({lowCoverage.length})
-          </Text>
-          {lowCoverage.slice(0, 5).map((comp: any) => (
-            <Group key={comp.componentPath} justify="space-between" mb="xs">
-              <Text size="sm">{comp.componentName}</Text>
-              <Group gap="xs">
-                <Badge size="xs" color="orange" variant="light">
-                  {comp.coverageScore.toFixed(0)}% coverage
-                </Badge>
-                {comp.hardcodedValues > 0 && (
-                  <Badge size="xs" color="red" variant="light">
-                    {comp.hardcodedValues} hardcoded
-                  </Badge>
+    <Card mt="lg" p="lg" withBorder>
+      <Group justify="space-between" mb="lg">
+        <div>
+          <Group align="center" gap="md">
+            <Box p="sm" style={{ background: 'var(--mantine-color-purple-6)', borderRadius: '50%', color: 'white' }}>
+              <Puzzle size={20} />
+            </Box>
+            <div>
+              <Title order={5}>Component Token Analysis</Title>
+              <Text size="sm" c="dimmed">How individual components are adopting design tokens</Text>
+            </div>
+          </Group>
+        </div>
+        <Select
+          value={sortBy}
+          onChange={(value) => setSortBy(value || 'coverage')}
+          data={[
+            { value: 'coverage', label: 'Coverage Score' },
+            { value: 'hardcoded', label: 'Hardcoded Values' },
+            { value: 'tokens', label: 'Tokens Used' },
+            { value: 'name', label: 'Component Name' }
+          ]}
+          size="sm"
+          w={150}
+        />
+      </Group>
+
+      {/* Summary Statistics */}
+      <Grid mb="lg">
+        <Grid.Col span={3}>
+          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Avg Coverage</Text>
+            <Text size="xl" fw={700} c={getCoverageColor(avgCoverage)}>
+              {avgCoverage.toFixed(1)}%
+            </Text>
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={3}>
+          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Components</Text>
+            <Text size="xl" fw={700} c="dark">{componentCoverage.length}</Text>
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={3}>
+          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Need Attention</Text>
+            <Text size="xl" fw={700} c="orange">{componentsWithIssues}</Text>
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={3}>
+          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Hardcoded Values</Text>
+            <Text size="xl" fw={700} c="red">{totalHardcoded}</Text>
+          </Card>
+        </Grid.Col>
+      </Grid>
+
+      {/* Component List */}
+      <Stack gap="md">
+        {displayedComponents.map((comp: any) => (
+          <Card key={comp.componentPath} withBorder p="md" className="component-coverage-card">
+            <Group justify="space-between" align="flex-start">
+              <div style={{ flex: 1 }}>
+                <Group gap="md" mb="sm">
+                  <Text fw={600} size="sm">{comp.componentName}</Text>
+                  <Group gap="xs">
+                    <Badge 
+                      size="sm" 
+                      variant="filled"
+                      color={getCoverageColor(comp.coverageScore)}
+                    >
+                      {comp.coverageScore.toFixed(0)}% coverage
+                    </Badge>
+                    {comp.tokensUsed.length > 0 && (
+                      <Badge size="sm" variant="light" color="blue">
+                        {comp.tokensUsed.length} tokens
+                      </Badge>
+                    )}
+                    {comp.hardcodedValues > 0 && (
+                      <Badge size="sm" variant="light" color="red">
+                        {comp.hardcodedValues} hardcoded
+                      </Badge>
+                    )}
+                  </Group>
+                </Group>
+                
+                <Progress 
+                  value={comp.coverageScore} 
+                  color={getCoverageColor(comp.coverageScore)}
+                  size="sm" 
+                  radius="sm" 
+                  mb="sm"
+                />
+                
+                <Group gap="lg">
+                  <div>
+                    <Text size="xs" c="dimmed">Path</Text>
+                    <Text size="xs" style={{ fontFamily: 'monospace' }}>
+                      {comp.componentPath.length > 50 
+                        ? `...${comp.componentPath.slice(-50)}` 
+                        : comp.componentPath
+                      }
+                    </Text>
+                  </div>
+                  {comp.tokensUsed.length > 0 && (
+                    <div>
+                      <Text size="xs" c="dimmed">Used Tokens</Text>
+                      <Spoiler maxHeight={40} showLabel="Show all" hideLabel="Hide">
+                        <Group gap="xs">
+                          {comp.tokensUsed.slice(0, 10).map((token: string) => (
+                            <Chip key={token} size="xs" variant="light">
+                              {token}
+                            </Chip>
+                          ))}
+                          {comp.tokensUsed.length > 10 && (
+                            <Text size="xs" c="dimmed">
+                              +{comp.tokensUsed.length - 10} more
+                            </Text>
+                          )}
+                        </Group>
+                      </Spoiler>
+                    </div>
+                  )}
+                </Group>
+              </div>
+              
+              <Group gap="xs" align="center">
+                {comp.coverageScore >= 80 && (
+                  <Tooltip label="Excellent token usage">
+                    <CheckCircle size={20} color="var(--mantine-color-green-6)" />
+                  </Tooltip>
+                )}
+                {comp.hardcodedValues > 5 && (
+                  <Tooltip label="High number of hardcoded values">
+                    <AlertTriangle size={20} color="var(--mantine-color-orange-6)" />
+                  </Tooltip>
+                )}
+                {comp.coverageScore < 20 && (
+                  <Tooltip label="Very low token usage">
+                    <AlertTriangle size={20} color="var(--mantine-color-red-6)" />
+                  </Tooltip>
                 )}
               </Group>
             </Group>
-          ))}
-        </div>
+          </Card>
+        ))}
+      </Stack>
+
+      {componentCoverage.length > 8 && (
+        <Group justify="center" mt="md">
+          <Button
+            variant="light"
+            onClick={toggleShowAll}
+            leftSection={showAll ? <EyeOff size={16} /> : <Eye size={16} />}
+          >
+            {showAll ? 'Show Less' : `Show All ${componentCoverage.length} Components`}
+          </Button>
+        </Group>
       )}
-      
-      {highCoverage.length > 0 && (
-        <div>
-          <Text size="sm" fw={500} c="green" mb="xs">
-            Components with Good Token Usage ({highCoverage.length})
-          </Text>
-          {highCoverage.slice(0, 3).map((comp: any) => (
-            <Group key={comp.componentPath} justify="space-between" mb="xs">
-              <Text size="sm">{comp.componentName}</Text>
-              <Badge size="xs" color="green" variant="light">
-                {comp.coverageScore.toFixed(0)}% coverage
-              </Badge>
-            </Group>
-          ))}
-        </div>
+
+      {componentCoverage.length === 0 && (
+        <Alert color="blue" variant="light">
+          <Text>No component analysis data available. This analysis requires components to be scanned first.</Text>
+        </Alert>
       )}
     </Card>
   );

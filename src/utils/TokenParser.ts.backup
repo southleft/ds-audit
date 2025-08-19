@@ -1,0 +1,439 @@
+import type { TokenInfo } from '../types/index.js';
+
+export interface ParsedToken {
+  name: string;
+  value: string | number;
+  type?: string;
+  description?: string;
+  $extensions?: Record<string, any>;
+  aliasOf?: string;
+}
+
+export interface TokenSet {
+  tokens: Map<string, ParsedToken>;
+  aliases: Map<string, string>; // alias name -> referenced token
+}
+
+export class TokenParser {
+  // Enhanced patterns for token references
+  private static readonly REFERENCE_PATTERNS = [
+    /^\{([^}]+)\}$/, // Style Dictionary: {colors.primary}
+    /^\$([a-zA-Z0-9-_.]+)$/, // Sass variable: $color-primary
+    /^var\(--([^)]+)\)$/, // CSS variable: var(--color-primary)
+    // CSS-in-JS patterns
+    /theme\.([a-zA-Z0-9_.]+)/g, // theme.colors.primary
+    /tokens\.([a-zA-Z0-9_.]+)/g, // tokens.spacing.lg
+    /designSystem\.([a-zA-Z0-9_.]+)/g, // designSystem.typography.body
+    // Utility function patterns
+    /(?:getToken|token)\(['"]([^'"]+)['"]\)/g, // getToken('color.primary')
+  ];
+
+  // Keys that indicate metadata rather than actual tokens
+  private static readonly METADATA_KEYS = [
+    '$figmavariablereferences',
+    '$figmacollectionid',
+    '$figmavariableid',
+    'figma',
+    'meta',
+    'metadata',
+    '_meta',
+    '$extensions',
+    '$type',
+    '$description'
+  ];
+
+  /**
+   * Parse tokens from JSON content with proper handling of:
+   * - Token references/aliases
+   * - Figma metadata
+   * - Nested structures
+   */
+  static parseJSON(content: string, filePath: string): TokenInfo[] {
+    try {
+      const data = JSON.parse(content);
+      const tokenSet = this.extractTokens(data);
+      
+      // Resolve aliases and count references
+      const resolvedTokens = this.resolveTokenReferences(tokenSet);
+      
+      // Convert to TokenInfo format
+      return this.convertToTokenInfo(resolvedTokens, filePath);
+    } catch (error) {
+      // Error parsing tokens
+      return [];
+    }
+  }
+
+  private static extractTokens(obj: any, prefix: string = ''): TokenSet {
+    const tokens = new Map<string, ParsedToken>();
+    const aliases = new Map<string, string>();
+
+    this.traverseObject(obj, prefix, tokens, aliases);
+    
+    return { tokens, aliases };
+  }
+
+  private static traverseObject(
+    obj: any,
+    prefix: string,
+    tokens: Map<string, ParsedToken>,
+    aliases: Map<string, string>,
+    depth: number = 0
+  ): void {
+    // Prevent excessive nesting
+    if (depth > 10) return;
+
+    for (const [key, value] of Object.entries(obj)) {
+      // Skip metadata keys
+      if (this.METADATA_KEYS.includes(key.toLowerCase())) {
+        continue;
+      }
+
+      const currentPath = prefix ? `${prefix}.${key}` : key;
+
+      if (this.isTokenObject(value)) {
+        // This is a token definition
+        const token = this.parseTokenObject(value);
+        token.name = currentPath;
+        
+        // Check if it's an alias
+        const aliasTarget = this.detectAlias(token.value);
+        if (aliasTarget) {
+          aliases.set(currentPath, aliasTarget);
+          token.aliasOf = aliasTarget;
+        }
+        
+        tokens.set(currentPath, token);
+      } else if (typeof value === 'object' && value !== null) {
+        // Nested object - could be a group or a simple token
+        if (this.looksLikeSimpleToken(value)) {
+          // Simple token (e.g., { "value": "#000000" })
+          const token: ParsedToken = {
+            name: currentPath,
+            value: (value as any).value || value,
+            type: (value as any).type || this.inferTokenType(key, (value as any).value || value),
+            description: (value as any).description
+          };
+          
+          const aliasTarget = this.detectAlias(token.value);
+          if (aliasTarget) {
+            aliases.set(currentPath, aliasTarget);
+            token.aliasOf = aliasTarget;
+          }
+          
+          tokens.set(currentPath, token);
+        } else {
+          // Token group - recurse
+          this.traverseObject(value, currentPath, tokens, aliases, depth + 1);
+        }
+      } else if (typeof value === 'string' || typeof value === 'number') {
+        // Direct value token
+        const token: ParsedToken = {
+          name: currentPath,
+          value: value,
+          type: this.inferTokenType(key, value)
+        };
+        
+        const aliasTarget = this.detectAlias(value);
+        if (aliasTarget) {
+          aliases.set(currentPath, aliasTarget);
+          token.aliasOf = aliasTarget;
+        }
+        
+        tokens.set(currentPath, token);
+      }
+    }
+  }
+
+  private static isTokenObject(value: any): boolean {
+    return typeof value === 'object' && 
+           value !== null && 
+           ('value' in value || '$value' in value);
+  }
+
+  private static looksLikeSimpleToken(value: any): boolean {
+    if (typeof value !== 'object' || value === null) return false;
+    
+    const keys = Object.keys(value);
+    const tokenKeys = ['value', '$value', 'type', '$type', 'description', '$description'];
+    
+    // If it has a value key and mostly token-related keys, it's probably a token
+    return keys.some(k => k === 'value' || k === '$value') &&
+           keys.every(k => tokenKeys.includes(k) || k.startsWith('$'));
+  }
+
+  private static parseTokenObject(obj: any): ParsedToken {
+    return {
+      name: '', // Will be set by caller
+      value: obj.value || obj.$value || obj,
+      type: obj.type || obj.$type,
+      description: obj.description || obj.$description,
+      $extensions: obj.$extensions
+    };
+  }
+
+  private static detectAlias(value: any): string | null {
+    if (typeof value !== 'string') return null;
+    
+    for (const pattern of this.REFERENCE_PATTERNS) {
+      const match = value.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    
+    return null;
+  }
+
+  private static inferTokenType(key: string, value: any): string {
+    const keyLower = key.toLowerCase();
+    const valueStr = String(value).toLowerCase();
+
+    // Check full path for context (e.g., spacing.md, typography.fontSize.base)
+    if (keyLower.includes('color') || keyLower.includes('colour') || 
+        valueStr.match(/#[0-9a-f]{3,8}|rgb|hsl/i)) {
+      return 'color';
+    }
+    if (keyLower.includes('spacing') || keyLower.includes('space') || 
+        keyLower.includes('margin') || keyLower.includes('padding') ||
+        keyLower.includes('gap') || keyLower.includes('inset') ||
+        valueStr.match(/^\d+(\.\d+)?(px|rem|em|%|vh|vw)$/)) {
+      return 'spacing';
+    }
+    if (keyLower.includes('font') || keyLower.includes('text') || 
+        keyLower.includes('typography') || keyLower.includes('weight') ||
+        keyLower.includes('size') && !keyLower.includes('border')) {
+      return 'typography';
+    }
+    if (keyLower.includes('shadow') || keyLower.includes('elevation')) {
+      return 'shadow';
+    }
+    if (keyLower.includes('border') || keyLower.includes('radius') || 
+        keyLower.includes('stroke')) {
+      return 'border';
+    }
+    return 'other';
+  }
+
+  private static resolveTokenReferences(tokenSet: TokenSet): Map<string, ParsedToken> {
+    const { tokens, aliases } = tokenSet;
+    const resolved = new Map<string, ParsedToken>();
+    
+    // First pass: copy all tokens
+    tokens.forEach((token, name) => {
+      resolved.set(name, { ...token });
+    });
+    
+    // Second pass: mark referenced tokens as "used" if they're referenced by other tokens
+    aliases.forEach((targetPath, aliasName) => {
+      const targetToken = resolved.get(targetPath);
+      if (targetToken) {
+        // Mark the target token as being referenced
+        if (!targetToken.$extensions) {
+          targetToken.$extensions = {};
+        }
+        if (!targetToken.$extensions.referencedBy) {
+          targetToken.$extensions.referencedBy = [];
+        }
+        targetToken.$extensions.referencedBy.push(aliasName);
+      }
+    });
+    
+    return resolved;
+  }
+
+  private static convertToTokenInfo(
+    tokens: Map<string, ParsedToken>, 
+    filePath: string
+  ): TokenInfo[] {
+    const tokenInfos: TokenInfo[] = [];
+    
+    tokens.forEach((token, name) => {
+      // Skip tokens that look like internal Figma metadata
+      if (name.toLowerCase().includes('figmavariable') || 
+          name.toLowerCase().includes('figmacollection')) {
+        return;
+      }
+      
+      // Determine category based on token structure
+      let category: TokenInfo['category'] = 'global';
+      if (name.includes('semantic') || name.includes('component')) {
+        category = 'semantic';
+      } else if (token.aliasOf) {
+        category = 'semantic'; // Aliases are usually semantic tokens
+      }
+      
+      tokenInfos.push({
+        name,
+        value: String(token.value),
+        type: (token.type || this.inferTokenType(name, token.value)) as TokenInfo['type'],
+        category,
+        path: filePath,
+        usage: 0,
+        // Store reference information in the token
+        ...(token.$extensions?.referencedBy && {
+          referencedBy: token.$extensions.referencedBy
+        }),
+        ...(token.aliasOf && {
+          aliasOf: token.aliasOf
+        })
+      });
+    });
+    
+    return tokenInfos;
+  }
+
+  /**
+   * Check if a value in code references a token (including aliases)
+   */
+  static isTokenReference(value: string): boolean {
+    if (typeof value !== 'string') return false;
+    
+    return this.REFERENCE_PATTERNS.some(pattern => {
+      pattern.lastIndex = 0; // Reset regex state
+      return pattern.test(value);
+    });
+  }
+
+  /**
+   * Extract the token name from a reference
+   */
+  static extractTokenReference(value: string): string | null {
+    if (typeof value !== 'string') return null;
+    
+    for (const pattern of this.REFERENCE_PATTERNS) {
+      pattern.lastIndex = 0; // Reset regex state
+      const match = value.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Extract all token references from a code string
+   */
+  static extractAllTokenReferences(code: string): string[] {
+    const references: string[] = [];
+    
+    for (const pattern of this.REFERENCE_PATTERNS) {
+      pattern.lastIndex = 0; // Reset regex state for global patterns
+      let match;
+      
+      if (pattern.global) {
+        while ((match = pattern.exec(code)) !== null) {
+          if (match[1]) {
+            references.push(match[1]);
+          }
+        }
+      } else {
+        match = code.match(pattern);
+        if (match && match[1]) {
+          references.push(match[1]);
+        }
+      }
+    }
+    
+    return [...new Set(references)]; // Remove duplicates
+  }
+  
+  /**
+   * Parse CSS for custom property usage and definitions
+   */
+  static parseCSSForTokens(content: string): {
+    definitions: Array<{ name: string; value: string; line: number }>;
+    usages: Array<{ name: string; line: number; context: string }>;
+  } {
+    const definitions: Array<{ name: string; value: string; line: number }> = [];
+    const usages: Array<{ name: string; line: number; context: string }> = [];
+    
+    const lines = content.split('\n');
+    
+    lines.forEach((line, index) => {
+      const lineNum = index + 1;
+      
+      // Find CSS custom property definitions: --token-name: value;
+      const defPattern = /--([a-zA-Z0-9-_]+)\s*:\s*([^;]+);/g;
+      let defMatch;
+      while ((defMatch = defPattern.exec(line)) !== null) {
+        definitions.push({
+          name: `--${defMatch[1]}`,
+          value: defMatch[2].trim(),
+          line: lineNum
+        });
+      }
+      
+      // Find CSS custom property usages: var(--token-name)
+      const usePattern = /var\(\s*(--[a-zA-Z0-9-_]+)\s*(?:,\s*([^)]+))?\)/g;
+      let useMatch;
+      while ((useMatch = usePattern.exec(line)) !== null) {
+        usages.push({
+          name: useMatch[1],
+          line: lineNum,
+          context: line.trim()
+        });
+      }
+    });
+    
+    return { definitions, usages };
+  }
+  
+  /**
+   * Parse JavaScript/TypeScript for token usage patterns
+   */
+  static parseJSForTokens(content: string): {
+    classNames: Array<{ classes: string[]; line: number; context: string }>;
+    apiReferences: Array<{ reference: string; line: number; context: string }>;
+    propUsages: Array<{ prop: string; value: string; line: number; context: string }>;
+  } {
+    const classNames: Array<{ classes: string[]; line: number; context: string }> = [];
+    const apiReferences: Array<{ reference: string; line: number; context: string }> = [];
+    const propUsages: Array<{ prop: string; value: string; line: number; context: string }> = [];
+    
+    const lines = content.split('\n');
+    
+    lines.forEach((line, index) => {
+      const lineNum = index + 1;
+      
+      // Extract className attributes
+      const classNamePattern = /className\s*=\s*[{]?['"`]([^'"}`]+)['"`][}]?/g;
+      let classMatch;
+      while ((classMatch = classNamePattern.exec(line)) !== null) {
+        const classes = classMatch[1].split(/\s+/).filter(c => c.length > 0);
+        if (classes.length > 0) {
+          classNames.push({
+            classes,
+            line: lineNum,
+            context: line.trim()
+          });
+        }
+      }
+      
+      // Extract design system API references
+      const apiPattern = /(?:theme|tokens|designSystem|ds)\.([a-zA-Z0-9_.]+)/g;
+      let apiMatch;
+      while ((apiMatch = apiPattern.exec(line)) !== null) {
+        apiReferences.push({
+          reference: apiMatch[0],
+          line: lineNum,
+          context: line.trim()
+        });
+      }
+      
+      // Extract component props that might use tokens
+      const propPattern = /(color|variant|size|spacing|theme|background)\s*=\s*['"`]([^'"}`]+)['"`]/g;
+      let propMatch;
+      while ((propMatch = propPattern.exec(line)) !== null) {
+        propUsages.push({
+          prop: propMatch[1],
+          value: propMatch[2],
+          line: lineNum,
+          context: line.trim()
+        });
+      }
+    });
+    
+    return { classNames, apiReferences, propUsages };
+  }
+}
