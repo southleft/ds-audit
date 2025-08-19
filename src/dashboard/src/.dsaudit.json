@@ -1,5 +1,5 @@
 {
-  "projectPath": "example-design-system",
+  "projectPath": "/Users/tjpitre/Sites/dsaudit/src/dashboard/src",
   "outputPath": "./audit",
   "includePatterns": [
     "**/*.{js,jsx,ts,tsx,css,scss,json,md}"
@@ -20,8 +20,7 @@
   },
   "ai": {
     "enabled": true,
-    "model": "claude-sonnet-4-20250514",
-    "apiKey": "sk-test-dummy-key-for-testing"
+    "model": "claude-sonnet-4-20250514"
   },
   "dashboard": {
     "enabled": true,

@@ -21,6 +21,17 @@ export interface TokenCoverageReport {
   componentUsage: ComponentTokenUsage[];
 }
 
+// Component type classification for better coverage calculation
+export type ComponentType = 'layout' | 'button' | 'input' | 'text' | 'card' | 'navigation' | 'unknown';
+
+// Extended ComponentTokenUsage with needs attention logic
+export interface ExtendedComponentTokenUsage extends ComponentTokenUsage {
+  needsAttention: boolean;
+  attentionReasons: string[];
+  componentType: ComponentType;
+  relevantTokenCount: number;
+}
+
 export class TokenCoverageAuditor {
   private config: AuditConfig;
   private scanner: FileScanner;
@@ -643,63 +654,112 @@ export class TokenCoverageAuditor {
   }
 
   private async analyzeComponentUsage(): Promise<ComponentTokenUsage[]> {
-    const componentUsage: ComponentTokenUsage[] = [];
+    const componentUsage: ExtendedComponentTokenUsage[] = [];
     
-    // Find component files
+    console.log('🔍 Starting component analysis...');
+    
+    // Find component files with more targeted patterns
     const componentPatterns = [
       '**/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
-      '**/src/**/*.component.{js,jsx,ts,tsx}',
-      '**/src/**/*.{vue,svelte}',
+      '**/src/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      '**/lib/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      '**/ui/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      // Exclude test, story, and other non-component files
       '!**/*.test.*',
       '!**/*.spec.*',
-      '!**/*.stories.*'
+      '!**/*.stories.*',
+      '!**/*.d.ts',
+      '!**/index.{js,jsx,ts,tsx}',
+      '!**/*.config.*',
+      '!**/node_modules/**'
     ];
 
     const componentFiles = await this.scanner.scanFiles(componentPatterns);
+    console.log(`📁 Found ${componentFiles.length} component files to analyze`);
 
     for (const file of componentFiles) {
-      const tokensUsed = new Set<string>();
-      let hardcodedCount = 0;
+      try {
+        const tokensUsed = new Set<string>();
+        let hardcodedCount = 0;
+        const componentName = path.basename(file.path, path.extname(file.path));
+        const componentType = this.classifyComponent(componentName, file.path);
 
-      // Check which tokens are used in this component
-      for (const [tokenName, usage] of this.tokenUsageMap.entries()) {
-        const usedInComponent = usage.files.some(f => f.path === file.path);
-        if (usedInComponent) {
-          tokensUsed.add(tokenName);
+        console.log(`🧩 Analyzing component: ${componentName} (${componentType})`);
+
+        // Check which tokens are used in this component
+        let tokenFoundInComponent = false;
+        for (const [tokenName, usage] of this.tokenUsageMap.entries()) {
+          const usedInComponent = usage.files.some(f => f.path === file.path);
+          if (usedInComponent) {
+            tokensUsed.add(tokenName);
+            tokenFoundInComponent = true;
+          }
         }
-      }
 
-      // Count hardcoded values in component
-      const content = await this.scanner.readFile(file.path);
-      const styleValues = this.extractAllStyleValues(content, path.extname(file.path));
-      
-      for (const { value, property } of styleValues) {
-        const normalizedValue = this.normalizeValue(value);
-        const exactMatch = this.tokenMatcher.findExactMatch(normalizedValue, property);
+        // Count hardcoded values in component by reading the file
+        const content = await this.scanner.readFile(file.path);
+        const styleValues = this.extractAllStyleValues(content, path.extname(file.path));
         
-        if (!exactMatch && this.isHardcodableValue(normalizedValue, property)) {
-          hardcodedCount++;
+        let hardcodedFound = false;
+        for (const { value, property } of styleValues) {
+          const normalizedValue = this.normalizeValue(value);
+          
+          // Skip token references and non-hardcodable values
+          if (TokenParser.isTokenReference(normalizedValue)) {
+            continue;
+          }
+          
+          const exactMatch = this.tokenMatcher.findExactMatch(normalizedValue, property);
+          
+          if (!exactMatch && this.isHardcodableValue(normalizedValue, property)) {
+            hardcodedCount++;
+            hardcodedFound = true;
+          }
         }
+
+        // Calculate relevant tokens for this component type
+        const relevantTokens = this.getRelevantTokensForComponent(componentType);
+        const relevantTokenCount = relevantTokens.length;
+
+        // Calculate realistic coverage score based on relevant tokens only
+        const coverageScore = relevantTokenCount > 0
+          ? Math.min(100, (tokensUsed.size / relevantTokenCount) * 100)
+          : 0;
+
+        // Determine if component needs attention
+        const { needsAttention, reasons } = this.evaluateComponentAttention(
+          coverageScore, 
+          hardcodedCount, 
+          tokensUsed.size,
+          componentType
+        );
+
+        const usage: ExtendedComponentTokenUsage = {
+          componentPath: file.path,
+          componentName,
+          tokensUsed: Array.from(tokensUsed),
+          hardcodedValues: hardcodedCount,
+          coverageScore,
+          needsAttention,
+          attentionReasons: reasons,
+          componentType,
+          relevantTokenCount
+        };
+
+        componentUsage.push(usage);
+        
+        console.log(`✅ ${componentName}: ${coverageScore.toFixed(1)}% coverage, ${tokensUsed.size} tokens used, ${hardcodedCount} hardcoded values`);
+      } catch (error) {
+        console.error(`❌ Error analyzing component ${file.path}:`, error);
       }
-
-      const totalPossibleTokens = this.tokens.filter(t => 
-        t.type === 'color' || t.type === 'spacing' || t.type === 'typography'
-      ).length;
-
-      const coverageScore = totalPossibleTokens > 0
-        ? (tokensUsed.size / totalPossibleTokens) * 100
-        : 0;
-
-      componentUsage.push({
-        componentPath: file.path,
-        componentName: path.basename(file.path, path.extname(file.path)),
-        tokensUsed: Array.from(tokensUsed),
-        hardcodedValues: hardcodedCount,
-        coverageScore
-      });
     }
 
-    return componentUsage.sort((a, b) => a.coverageScore - b.coverageScore);
+    console.log(`🏁 Component analysis complete. Found ${componentUsage.length} valid components.`);
+    
+    // Return with attention data included
+    return componentUsage
+      .map(({ componentType, relevantTokenCount, ...usage }) => usage)
+      .sort((a, b) => a.coverageScore - b.coverageScore);
   }
 
   private extractAllStyleValues(content: string, ext: string): Array<{ property: string; value: string }> {
@@ -712,5 +772,148 @@ export class TokenCoverageAuditor {
     }
 
     return allValues;
+  }
+
+  /**
+   * Classify component type based on name and path for better coverage calculation
+   */
+  private classifyComponent(componentName: string, componentPath: string): ComponentType {
+    const nameLower = componentName.toLowerCase();
+    const pathLower = componentPath.toLowerCase();
+    
+    // Layout components - typically need fewer design tokens
+    if (nameLower.includes('layout') || nameLower.includes('container') || 
+        nameLower.includes('wrapper') || nameLower.includes('grid') ||
+        pathLower.includes('/layout/')) {
+      return 'layout';
+    }
+    
+    // Buttons - typically use color, spacing, typography tokens
+    if (nameLower.includes('button') || nameLower.includes('btn')) {
+      return 'button';
+    }
+    
+    // Input components - need color, spacing, border tokens
+    if (nameLower.includes('input') || nameLower.includes('field') ||
+        nameLower.includes('form') || nameLower.includes('select') ||
+        nameLower.includes('textarea')) {
+      return 'input';
+    }
+    
+    // Text components - primarily typography tokens
+    if (nameLower.includes('text') || nameLower.includes('heading') ||
+        nameLower.includes('title') || nameLower.includes('label') ||
+        nameLower.includes('typography')) {
+      return 'text';
+    }
+    
+    // Card components - use spacing, border, shadow tokens
+    if (nameLower.includes('card') || nameLower.includes('panel') ||
+        nameLower.includes('tile')) {
+      return 'card';
+    }
+    
+    // Navigation components - use color and spacing tokens
+    if (nameLower.includes('nav') || nameLower.includes('menu') ||
+        nameLower.includes('breadcrumb') || nameLower.includes('tab') ||
+        pathLower.includes('/navigation/')) {
+      return 'navigation';
+    }
+    
+    return 'unknown';
+  }
+
+  /**
+   * Get relevant tokens for a specific component type
+   */
+  private getRelevantTokensForComponent(componentType: ComponentType): TokenInfo[] {
+    const allTokens = this.tokens;
+    
+    switch (componentType) {
+      case 'button':
+        return allTokens.filter(t => 
+          t.type === 'color' || t.type === 'spacing' || t.type === 'typography' || t.type === 'border'
+        );
+      
+      case 'input':
+        return allTokens.filter(t => 
+          t.type === 'color' || t.type === 'spacing' || t.type === 'border'
+        );
+      
+      case 'text':
+        return allTokens.filter(t => t.type === 'typography' || t.type === 'color');
+      
+      case 'card':
+        return allTokens.filter(t => 
+          t.type === 'spacing' || t.type === 'border' || t.type === 'shadow' || t.type === 'color'
+        );
+      
+      case 'navigation':
+        return allTokens.filter(t => t.type === 'color' || t.type === 'spacing');
+      
+      case 'layout':
+        return allTokens.filter(t => t.type === 'spacing');
+      
+      default:
+        // For unknown components, consider tokens that are commonly used
+        return allTokens.filter(t => 
+          t.type === 'color' || t.type === 'spacing' || t.type === 'typography'
+        );
+    }
+  }
+
+  /**
+   * Evaluate if a component needs attention based on multiple criteria
+   */
+  private evaluateComponentAttention(
+    coverageScore: number, 
+    hardcodedCount: number, 
+    tokensUsedCount: number,
+    componentType: ComponentType
+  ): { needsAttention: boolean; reasons: string[] } {
+    const reasons: string[] = [];
+    
+    // Coverage thresholds vary by component type
+    const coverageThresholds = {
+      text: 40,        // Text components can have decent coverage with fewer tokens
+      layout: 25,      // Layout components typically use fewer design tokens
+      button: 50,      // Buttons should use a good variety of tokens
+      input: 45,       // Input components should use multiple token types
+      card: 40,        // Cards should use spacing, borders, shadows
+      navigation: 35,  // Navigation uses color and spacing tokens
+      unknown: 30      // Default threshold for unknown components
+    };
+    
+    const threshold = coverageThresholds[componentType] || 30;
+    
+    // Low coverage
+    if (coverageScore < threshold) {
+      reasons.push(`Low token coverage (${coverageScore.toFixed(1)}% < ${threshold}%)`);
+    }
+    
+    // High number of hardcoded values
+    const hardcodedThreshold = componentType === 'text' ? 3 : 5;
+    if (hardcodedCount > hardcodedThreshold) {
+      reasons.push(`High hardcoded values (${hardcodedCount} > ${hardcodedThreshold})`);
+    }
+    
+    // Zero token usage (very bad)
+    if (tokensUsedCount === 0) {
+      reasons.push('No design tokens used');
+    }
+    
+    // Component type specific checks
+    if (componentType === 'button' && coverageScore < 30) {
+      reasons.push('Buttons should use color, spacing, and typography tokens');
+    }
+    
+    if (componentType === 'input' && hardcodedCount > 3) {
+      reasons.push('Input components should avoid hardcoded styling');
+    }
+    
+    return {
+      needsAttention: reasons.length > 0,
+      reasons
+    };
   }
 }

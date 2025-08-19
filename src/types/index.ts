@@ -178,6 +178,8 @@ export interface ComponentTokenUsage {
   tokensUsed: string[];
   hardcodedValues: number;
   coverageScore: number;
+  needsAttention?: boolean;
+  attentionReasons?: string[];
 }
 
 export interface DocumentationInfo {

@@ -83,10 +83,10 @@
   background: var(--bg-tertiary);
 }
 
-/* Enhanced Token Coverage Styles */
+/* Enhanced Token Coverage Styles - Dark Theme */
 .token-coverage-main {
-  background: linear-gradient(135deg, var(--mantine-color-blue-0) 0%, var(--mantine-color-indigo-0) 100%);
-  border: 1px solid var(--mantine-color-blue-2);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border: 1px solid var(--border-light);
   position: relative;
   overflow: hidden;
 }
@@ -98,28 +98,31 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(45deg, transparent 49%, rgba(255, 255, 255, 0.1) 50%, transparent 51%);
+  background: linear-gradient(45deg, transparent 49%, rgba(255, 255, 255, 0.02) 50%, transparent 51%);
   pointer-events: none;
 }
 
 .token-metric-card {
-  background: white;
-  border: 1px solid var(--mantine-color-gray-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-primary);
 }
 
 .token-metric-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-light);
 }
 
 .detection-method-card {
-  background: white;
-  border: 1px solid var(--mantine-color-gray-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
+  color: var(--text-primary);
 }
 
 .detection-method-card::before {
@@ -129,7 +132,7 @@
   left: 0;
   width: 4px;
   height: 100%;
-  background: var(--mantine-color-blue-6);
+  background: var(--accent-primary);
   transition: width 0.3s ease;
 }
 
@@ -139,42 +142,47 @@
 
 .detection-method-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border-light);
 }
 
 .category-breakdown-card {
-  background: var(--mantine-color-gray-0);
-  border: 1px solid var(--mantine-color-gray-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
   transition: all 0.2s ease;
+  color: var(--text-primary);
 }
 
 .category-breakdown-card:hover {
-  background: var(--mantine-color-gray-1);
-  border-color: var(--mantine-color-blue-4);
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
 }
 
 .unused-token-chip {
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid var(--mantine-color-gray-3);
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .unused-token-chip:hover {
-  background: var(--mantine-color-blue-1);
-  border-color: var(--mantine-color-blue-4);
+  background: var(--bg-surface);
+  border-color: var(--accent-primary);
   transform: scale(1.05);
 }
 
 .component-coverage-card {
-  background: var(--mantine-color-gray-0);
-  border: 1px solid var(--mantine-color-gray-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
   transition: all 0.2s ease;
+  color: var(--text-primary);
 }
 
 .component-coverage-card:hover {
-  background: white;
-  border-color: var(--mantine-color-blue-4);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .quick-action-btn {

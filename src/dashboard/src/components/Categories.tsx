@@ -585,11 +585,11 @@ function renderTokenCoverage(coverage: any) {
         <Group justify="space-between" mb="lg">
           <div>
             <Group align="center" gap="md">
-              <Box p="sm" style={{ background: 'var(--mantine-color-blue-6)', borderRadius: '50%', color: 'white' }}>
+              <Box p="sm" style={{ background: 'var(--accent-primary)', borderRadius: '50%', color: 'white' }}>
                 <Target size={24} />
               </Box>
               <div>
-                <Title order={4} c="dark">Token Coverage Analysis</Title>
+                <Title order={4}>Token Coverage Analysis</Title>
                 <Text size="sm" c="dimmed">How well your design tokens are being utilized across the codebase</Text>
               </div>
             </Group>
@@ -622,7 +622,7 @@ function renderTokenCoverage(coverage: any) {
                 <Grid.Col span={4}>
                   <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
                     <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Total Tokens</Text>
-                    <Text size="2.5rem" fw={900} c="dark" lh={1}>{coverage.totalTokens}</Text>
+                    <Text size="2.5rem" fw={900} lh={1}>{coverage.totalTokens}</Text>
                     <Text size="xs" c="dimmed">Available in system</Text>
                   </Card>
                 </Grid.Col>
@@ -658,7 +658,7 @@ function renderTokenCoverage(coverage: any) {
                   color={getCoverageColor(coverage.coveragePercentage)} 
                   size="xl" 
                   radius="md"
-                  style={{ background: 'var(--mantine-color-gray-2)' }}
+                  style={{ background: 'var(--bg-tertiary)' }}
                 />
                 <Group justify="space-between" mt="xs">
                   <Text size="sm" c="dimmed">0%</Text>
@@ -715,7 +715,7 @@ function renderTokenCoverage(coverage: any) {
               <Grid>
                 <Grid.Col span={3}>
                   <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Code size={32} color="var(--mantine-color-blue-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Code size={32} color="var(--accent-primary)" style={{ margin: '0 auto 0.5rem' }} />
                     <Text fw={600}>CSS Classes</Text>
                     <Text size="xl" fw={700} c="blue">{detectionMethods.cssClasses}</Text>
                     <Text size="xs" c="dimmed">className usage</Text>
@@ -723,7 +723,7 @@ function renderTokenCoverage(coverage: any) {
                 </Grid.Col>
                 <Grid.Col span={3}>
                   <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Activity size={32} color="var(--mantine-color-green-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Activity size={32} color="var(--success)" style={{ margin: '0 auto 0.5rem' }} />
                     <Text fw={600}>API References</Text>
                     <Text size="xl" fw={700} c="green">{detectionMethods.apiReferences}</Text>
                     <Text size="xs" c="dimmed">theme.colors.primary</Text>
@@ -731,7 +731,7 @@ function renderTokenCoverage(coverage: any) {
                 </Grid.Col>
                 <Grid.Col span={3}>
                   <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Layers size={32} color="var(--mantine-color-orange-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Layers size={32} color="var(--warning)" style={{ margin: '0 auto 0.5rem' }} />
                     <Text fw={600}>Component Props</Text>
                     <Text size="xl" fw={700} c="orange">{detectionMethods.componentProps}</Text>
                     <Text size="xs" c="dimmed">prop values</Text>
@@ -739,7 +739,7 @@ function renderTokenCoverage(coverage: any) {
                 </Grid.Col>
                 <Grid.Col span={3}>
                   <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Target size={32} color="var(--mantine-color-purple-6)" style={{ margin: '0 auto 0.5rem' }} />
+                    <Target size={32} color="var(--accent-secondary)" style={{ margin: '0 auto 0.5rem' }} />
                     <Text fw={600}>CSS Variables</Text>
                     <Text size="xl" fw={700} c="purple">{detectionMethods.cssVariables}</Text>
                     <Text size="xs" c="dimmed">var(--token)</Text>
@@ -812,7 +812,7 @@ function renderTokenCoverage(coverage: any) {
           <Group justify="space-between" mb="lg">
             <div>
               <Group align="center" gap="md">
-                <AlertTriangle size={24} color="var(--mantine-color-orange-6)" />
+                <AlertTriangle size={24} color="var(--warning)" />
                 <div>
                   <Title order={5}>Unused Tokens ({coverage.unusedTokens?.length || 0})</Title>
                   <Text size="sm" c="dimmed">Tokens that are defined but not being used in your codebase</Text>
@@ -911,7 +911,7 @@ function renderTokenRedundancies(redundancies: any[]) {
       </Text>
       
       {redundancies.slice(0, 5).map((redundancy: any, index: number) => (
-        <div key={index} style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: 'var(--mantine-color-gray-light)' }}>
+        <div key={index} style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '0.375rem', border: '1px solid var(--border-color)' }}>
           <Group justify="space-between" mb="xs">
             <Badge size="sm" variant="filled" color="orange">
               {redundancy.type}
@@ -970,6 +970,7 @@ function renderComponentCoverage(componentCoverage: any[]) {
   
   const totalHardcoded = componentCoverage.reduce((sum, comp) => sum + comp.hardcodedValues, 0);
   const componentsWithIssues = componentCoverage.filter(comp => comp.hardcodedValues > 0 || comp.coverageScore < 50).length;
+  const componentsNeedingAttention = componentCoverage.filter(comp => comp.needsAttention).length;
   
   const getCoverageColor = (score: number) => {
     if (score >= 80) return 'green';
@@ -984,7 +985,7 @@ function renderComponentCoverage(componentCoverage: any[]) {
       <Group justify="space-between" mb="lg">
         <div>
           <Group align="center" gap="md">
-            <Box p="sm" style={{ background: 'var(--mantine-color-purple-6)', borderRadius: '50%', color: 'white' }}>
+            <Box p="sm" style={{ background: 'var(--accent-secondary)', borderRadius: '50%', color: 'white' }}>
               <Puzzle size={20} />
             </Box>
             <div>
@@ -1010,7 +1011,7 @@ function renderComponentCoverage(componentCoverage: any[]) {
       {/* Summary Statistics */}
       <Grid mb="lg">
         <Grid.Col span={3}>
-          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+          <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Avg Coverage</Text>
             <Text size="xl" fw={700} c={getCoverageColor(avgCoverage)}>
               {avgCoverage.toFixed(1)}%
@@ -1018,19 +1019,19 @@ function renderComponentCoverage(componentCoverage: any[]) {
           </Card>
         </Grid.Col>
         <Grid.Col span={3}>
-          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+          <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Components</Text>
-            <Text size="xl" fw={700} c="dark">{componentCoverage.length}</Text>
+            <Text size="xl" fw={700}>{componentCoverage.length}</Text>
           </Card>
         </Grid.Col>
         <Grid.Col span={3}>
-          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+          <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Need Attention</Text>
-            <Text size="xl" fw={700} c="orange">{componentsWithIssues}</Text>
+            <Text size="xl" fw={700} c="orange">{componentsNeedingAttention}</Text>
           </Card>
         </Grid.Col>
         <Grid.Col span={3}>
-          <Card withBorder p="md" style={{ textAlign: 'center', background: 'var(--mantine-color-gray-0)' }}>
+          <Card withBorder p="md" className="token-metric-card" style={{ textAlign: 'center' }}>
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Hardcoded Values</Text>
             <Text size="xl" fw={700} c="red">{totalHardcoded}</Text>
           </Card>
@@ -1061,6 +1062,11 @@ function renderComponentCoverage(componentCoverage: any[]) {
                     {comp.hardcodedValues > 0 && (
                       <Badge size="sm" variant="light" color="red">
                         {comp.hardcodedValues} hardcoded
+                      </Badge>
+                    )}
+                    {comp.needsAttention && (
+                      <Badge size="sm" variant="light" color="orange">
+                        Needs attention
                       </Badge>
                     )}
                   </Group>
@@ -1109,17 +1115,22 @@ function renderComponentCoverage(componentCoverage: any[]) {
               <Group gap="xs" align="center">
                 {comp.coverageScore >= 80 && (
                   <Tooltip label="Excellent token usage">
-                    <CheckCircle size={20} color="var(--mantine-color-green-6)" />
+                    <CheckCircle size={20} color="var(--success)" />
                   </Tooltip>
                 )}
                 {comp.hardcodedValues > 5 && (
                   <Tooltip label="High number of hardcoded values">
-                    <AlertTriangle size={20} color="var(--mantine-color-orange-6)" />
+                    <AlertTriangle size={20} color="var(--warning)" />
                   </Tooltip>
                 )}
                 {comp.coverageScore < 20 && (
                   <Tooltip label="Very low token usage">
-                    <AlertTriangle size={20} color="var(--mantine-color-red-6)" />
+                    <AlertTriangle size={20} color="var(--danger)" />
+                  </Tooltip>
+                )}
+                {comp.needsAttention && comp.attentionReasons && comp.attentionReasons.length > 0 && (
+                  <Tooltip label={`Attention needed: ${comp.attentionReasons.join(', ')}`}>
+                    <AlertTriangle size={20} color="var(--warning)" />
                   </Tooltip>
                 )}
               </Group>
