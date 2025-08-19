@@ -121,6 +121,63 @@ export interface TokenInfo {
   category: 'global' | 'semantic' | 'component';
   path: string;
   usage: number;
+  referencedBy?: string[]; // Other tokens that reference this token
+  aliasOf?: string; // If this token is an alias, what token it references
+}
+
+export interface TokenUsageInfo {
+  tokenName: string;
+  tokenValue: string;
+  usageCount: number;
+  files: Array<{
+    path: string;
+    line?: number;
+    context?: string;
+  }>;
+}
+
+export interface HardcodedValue {
+  value: string;
+  type: 'color' | 'spacing' | 'typography' | 'shadow' | 'border' | 'other';
+  files: Array<{
+    path: string;
+    line?: number;
+    context?: string;
+  }>;
+  matchedToken?: string;
+  similarity?: number;
+}
+
+export interface TokenRedundancy {
+  tokens: Array<{
+    name: string;
+    value: string;
+  }>;
+  type: 'color' | 'spacing' | 'typography' | 'shadow' | 'border' | 'other';
+  similarity: number;
+  suggestion?: string;
+}
+
+export interface TokenCoverageMetrics {
+  totalTokens: number;
+  usedTokens: number;
+  unusedTokens: string[];
+  coveragePercentage: number;
+  byCategory: Record<string, {
+    total: number;
+    used: number;
+    percentage: number;
+    mostUsed: Array<{ name: string; count: number }>;
+    leastUsed: Array<{ name: string; count: number }>;
+  }>;
+}
+
+export interface ComponentTokenUsage {
+  componentPath: string;
+  componentName: string;
+  tokensUsed: string[];
+  hardcodedValues: number;
+  coverageScore: number;
 }
 
 export interface DocumentationInfo {

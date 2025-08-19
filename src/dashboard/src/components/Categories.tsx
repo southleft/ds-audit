@@ -331,20 +331,50 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
             </Accordion.Item>
           )}
 
-          {category.metadata && (
+          {(category.metadata || category.metrics) && (
             <Accordion.Item value="details">
               <Accordion.Control icon={<BarChart3 size={16} />}>
                 <Text fw={600}>Details & Metrics</Text>
               </Accordion.Control>
               <Accordion.Panel>
-                <div className="metadata-grid">
-                  {Object.entries(category.metadata).map(([key, value]) => (
-                    <div key={key} className="metadata-item">
-                      <Text size="sm" c="dimmed">{key.replace(/([A-Z])/g, ' $1').trim()}</Text>
-                      <Text fw={600}>{String(value)}</Text>
+                {category.metrics && (
+                  <>
+                    <Title order={5} mb="md">Metrics</Title>
+                    <div className="metadata-grid">
+                      {Object.entries(category.metrics).filter(([key]) => 
+                        !['coverage', 'tokenUsage', 'redundancies', 'componentCoverage'].includes(key)
+                      ).map(([key, value]) => (
+                        <div key={key} className="metadata-item">
+                          <Text size="sm" c="dimmed">{formatMetricName(key)}</Text>
+                          <Text fw={600}>{formatMetricValue(value)}</Text>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+
+                    {/* Token Coverage Section */}
+                    {category.metrics.coverage && renderTokenCoverage(category.metrics.coverage)}
+
+                    {/* Token Redundancies Section */}
+                    {category.metrics.redundancies && category.metrics.redundancies.length > 0 && renderTokenRedundancies(category.metrics.redundancies)}
+
+                    {/* Component Coverage Section */}
+                    {category.metrics.componentCoverage && renderComponentCoverage(category.metrics.componentCoverage)}
+                  </>
+                )}
+
+                {category.metadata && (
+                  <>
+                    <Title order={5} mt="lg" mb="md">Additional Details</Title>
+                    <div className="metadata-grid">
+                      {Object.entries(category.metadata).map(([key, value]) => (
+                        <div key={key} className="metadata-item">
+                          <Text size="sm" c="dimmed">{key.replace(/([A-Z])/g, ' $1').trim()}</Text>
+                          <Text fw={600}>{String(value)}</Text>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </Accordion.Panel>
             </Accordion.Item>
           )}
@@ -411,6 +441,171 @@ function extractComponentName(message: string): string {
   );
   
   return capitalizedWord || '';
+}
+
+// Helper function to format metric names
+function formatMetricName(name: string): string {
+  return name
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
+}
+
+// Helper function to format metric values
+function formatMetricValue(value: any): string {
+  if (typeof value === 'number') {
+    return value.toLocaleString();
+  }
+  if (Array.isArray(value)) {
+    return `${value.length} items`;
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+// Render token coverage metrics
+function renderTokenCoverage(coverage: any) {
+  return (
+    <Card mt="lg" p="md" withBorder>
+      <Title order={6} mb="md">Token Coverage Analysis</Title>
+      
+      <Group mb="md">
+        <div>
+          <Text size="xs" c="dimmed">Total Tokens</Text>
+          <Text size="xl" fw={700}>{coverage.totalTokens}</Text>
+        </div>
+        <div>
+          <Text size="xs" c="dimmed">Used Tokens</Text>
+          <Text size="xl" fw={700} c="green">{coverage.usedTokens}</Text>
+        </div>
+        <div>
+          <Text size="xs" c="dimmed">Coverage</Text>
+          <Text size="xl" fw={700} c={coverage.coveragePercentage > 70 ? 'green' : 'orange'}>
+            {coverage.coveragePercentage.toFixed(1)}%
+          </Text>
+        </div>
+      </Group>
+
+      <Progress value={coverage.coveragePercentage} color={coverage.coveragePercentage > 70 ? 'green' : 'orange'} size="md" radius="sm" mb="lg" />
+
+      {coverage.byCategory && Object.entries(coverage.byCategory).map(([category, data]: [string, any]) => (
+        <div key={category} style={{ marginBottom: '1rem' }}>
+          <Group justify="space-between" mb="xs">
+            <Text fw={500}>{formatMetricName(category)}</Text>
+            <Badge size="sm" variant="light">
+              {data.used}/{data.total} ({data.percentage.toFixed(0)}%)
+            </Badge>
+          </Group>
+          <Progress value={data.percentage} size="xs" radius="sm" />
+        </div>
+      ))}
+
+      {coverage.unusedTokens && coverage.unusedTokens.length > 0 && (
+        <div style={{ marginTop: '1rem' }}>
+          <Text size="sm" fw={500} mb="xs">Unused Tokens ({coverage.unusedTokens.length})</Text>
+          <div style={{ maxHeight: '100px', overflowY: 'auto' }}>
+            {coverage.unusedTokens.map((token: string) => (
+              <Badge key={token} size="xs" variant="light" color="gray" mr="xs" mb="xs">
+                {token}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Render token redundancies
+function renderTokenRedundancies(redundancies: any[]) {
+  return (
+    <Card mt="lg" p="md" withBorder>
+      <Title order={6} mb="md">Token Redundancies</Title>
+      <Text size="sm" c="dimmed" mb="md">
+        Found {redundancies.length} sets of potentially redundant tokens
+      </Text>
+      
+      {redundancies.slice(0, 5).map((redundancy: any, index: number) => (
+        <div key={index} style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: 'var(--mantine-color-gray-light)' }}>
+          <Group justify="space-between" mb="xs">
+            <Badge size="sm" variant="filled" color="orange">
+              {redundancy.type}
+            </Badge>
+            <Text size="xs" c="dimmed">
+              {(redundancy.similarity * 100).toFixed(0)}% similar
+            </Text>
+          </Group>
+          {redundancy.tokens.map((token: any, i: number) => (
+            <Text key={i} size="sm">
+              <span style={{ fontWeight: 600 }}>{token.name}</span>: {token.value}
+            </Text>
+          ))}
+          {redundancy.suggestion && (
+            <Text size="xs" c="dimmed" mt="xs">{redundancy.suggestion}</Text>
+          )}
+        </div>
+      ))}
+      
+      {redundancies.length > 5 && (
+        <Text size="sm" c="dimmed" ta="center">
+          And {redundancies.length - 5} more...
+        </Text>
+      )}
+    </Card>
+  );
+}
+
+// Render component coverage
+function renderComponentCoverage(componentCoverage: any[]) {
+  const lowCoverage = componentCoverage.filter((c: any) => c.coverageScore < 50);
+  const highCoverage = componentCoverage.filter((c: any) => c.coverageScore >= 80);
+  
+  return (
+    <Card mt="lg" p="md" withBorder>
+      <Title order={6} mb="md">Component Token Usage</Title>
+      
+      {lowCoverage.length > 0 && (
+        <div style={{ marginBottom: '1rem' }}>
+          <Text size="sm" fw={500} c="orange" mb="xs">
+            Components with Low Token Usage ({lowCoverage.length})
+          </Text>
+          {lowCoverage.slice(0, 5).map((comp: any) => (
+            <Group key={comp.componentPath} justify="space-between" mb="xs">
+              <Text size="sm">{comp.componentName}</Text>
+              <Group gap="xs">
+                <Badge size="xs" color="orange" variant="light">
+                  {comp.coverageScore.toFixed(0)}% coverage
+                </Badge>
+                {comp.hardcodedValues > 0 && (
+                  <Badge size="xs" color="red" variant="light">
+                    {comp.hardcodedValues} hardcoded
+                  </Badge>
+                )}
+              </Group>
+            </Group>
+          ))}
+        </div>
+      )}
+      
+      {highCoverage.length > 0 && (
+        <div>
+          <Text size="sm" fw={500} c="green" mb="xs">
+            Components with Good Token Usage ({highCoverage.length})
+          </Text>
+          {highCoverage.slice(0, 3).map((comp: any) => (
+            <Group key={comp.componentPath} justify="space-between" mb="xs">
+              <Text size="sm">{comp.componentName}</Text>
+              <Badge size="xs" color="green" variant="light">
+                {comp.coverageScore.toFixed(0)}% coverage
+              </Badge>
+            </Group>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 export default Categories;

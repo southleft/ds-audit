@@ -2,6 +2,8 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { AuditConfig, CategoryResult, Finding, TokenInfo } from '../types/index.js';
 import { FileScanner } from '../utils/FileScanner.js';
+import { TokenCoverageAuditor, type TokenCoverageReport } from './TokenCoverageAuditor.js';
+import { TokenParser } from '../utils/TokenParser.js';
 
 export class TokenAuditor {
   private config: AuditConfig;
@@ -18,17 +20,30 @@ export class TokenAuditor {
     const detailedPaths: any[] = [];
     const allScannedPaths = new Set<string>();
     
-    // Common token file patterns - including monorepo
+    // Common token file patterns - more focused
     const tokenFilePatterns = [
-      '**/tokens/**/*.{js,ts,json,scss,css}',
-      '**/design-tokens/**/*.{js,ts,json,scss,css}',
-      '**/styles/tokens/**/*.{js,ts,json,scss,css}',
-      '**/theme/**/*.{js,ts,json}',
-      '**/_variables.scss',
-      '**/variables.{scss,css}',
-      '**/tokens.{js,ts,json}',
-      '**/packages/*/tokens/**/*.{js,ts,json,scss,css}',
-      '**/packages/*/theme/**/*.{js,ts,json}',
+      // Specific token directories
+      '**/tokens/*.{json,js,ts}',
+      '**/design-tokens/*.{json,js,ts}',
+      '**/tokens/!(*.d).{json,js,ts}', // Exclude .d.ts files
+      '**/design-system/tokens/**/*.{json,js,ts}',
+      
+      // Common token file names
+      'tokens.{json,js,ts}',
+      'design-tokens.{json,js,ts}',
+      '**/theme/tokens.{json,js,ts}',
+      
+      // Style Dictionary patterns
+      '**/properties/**/*.{json,js}',
+      '**/build/tokens.{json,js}', // Only if in build folder
+      
+      // Exclude generated/build files
+      '!**/node_modules/**',
+      '!**/dist/**',
+      '!**/.next/**',
+      '!**/build/**',
+      '!**/*.generated.*',
+      '!**/*.min.*'
     ];
     
     // CSS Custom Properties patterns
@@ -90,15 +105,25 @@ export class TokenAuditor {
 
     const filesScanned = totalFilesScanned;
 
-    // Check for hardcoded values in style files
+    // Perform comprehensive token coverage analysis
+    let coverageReport: TokenCoverageReport | undefined;
+    if (tokens.length > 0) {
+      const coverageAuditor = new TokenCoverageAuditor(this.config, tokens);
+      coverageReport = await coverageAuditor.analyzeCoverage();
+
+      // Add findings from coverage analysis
+      this.addCoverageFindings(coverageReport, findings);
+    }
+
+    // Check for hardcoded values in style files (legacy method, kept for compatibility)
     const hardcodedFindings = await this.checkHardcodedValues();
     findings.push(...hardcodedFindings);
 
     // Analyze token usage and structure
     this.analyzeTokenStructure(tokens, findings);
 
-    // Calculate score
-    const score = this.calculateScore(tokens, findings, filesScanned);
+    // Calculate score including coverage metrics
+    const score = this.calculateScore(tokens, findings, filesScanned, coverageReport);
     const grade = this.getGrade(score);
 
     return {
@@ -114,6 +139,12 @@ export class TokenAuditor {
         tokenTypes: this.categorizeTokens(tokens),
         tokenFormats: this.getTokenFormats(detailedPaths),
         hardcodedValues: hardcodedFindings.length,
+        ...(coverageReport && {
+          coverage: coverageReport.coverageMetrics,
+          tokenUsage: coverageReport.usageMapping,
+          redundancies: coverageReport.redundancies,
+          componentCoverage: coverageReport.componentUsage
+        }),
       },
       scannedPaths: Array.from(allScannedPaths).sort(),
       detailedPaths,
@@ -150,16 +181,8 @@ export class TokenAuditor {
   }
 
   private parseJSONTokens(content: string, filePath: string): TokenInfo[] {
-    const tokens: TokenInfo[] = [];
-    
-    try {
-      const data = JSON.parse(content);
-      this.extractTokensFromObject(data, filePath, '', tokens);
-    } catch (error) {
-      // Invalid JSON
-    }
-
-    return tokens;
+    // Use the new TokenParser for better handling of token structures
+    return TokenParser.parseJSON(content, filePath);
   }
 
   private extractTokensFromObject(
@@ -460,7 +483,68 @@ export class TokenAuditor {
     return Array.from(formats);
   }
 
-  private calculateScore(tokens: TokenInfo[], findings: Finding[], filesScanned: number): number {
+  private addCoverageFindings(coverageReport: TokenCoverageReport, findings: Finding[]): void {
+    const { coverageMetrics, hardcodedValues, redundancies, componentUsage } = coverageReport;
+
+    // Add finding for unused tokens
+    if (coverageMetrics.unusedTokens.length > 0) {
+      const unusedPercentage = (coverageMetrics.unusedTokens.length / coverageMetrics.totalTokens) * 100;
+      findings.push({
+        id: 'token-unused-tokens',
+        type: unusedPercentage > 50 ? 'warning' : 'info',
+        message: `${coverageMetrics.unusedTokens.length} tokens (${unusedPercentage.toFixed(1)}%) are defined but never used`,
+        severity: unusedPercentage > 50 ? 'medium' : 'low',
+        suggestion: 'Consider removing unused tokens or ensure they are properly referenced in your codebase',
+      });
+    }
+
+    // Add finding for hardcoded values that match tokens
+    const hardcodedWithMatches = hardcodedValues.filter(hv => hv.matchedToken);
+    if (hardcodedWithMatches.length > 0) {
+      findings.push({
+        id: 'token-hardcoded-matches',
+        type: 'warning',
+        message: `Found ${hardcodedWithMatches.length} hardcoded values that closely match existing tokens`,
+        severity: 'high',
+        suggestion: 'Replace these hardcoded values with their corresponding token references',
+      });
+    }
+
+    // Add finding for redundant tokens
+    if (redundancies.length > 0) {
+      findings.push({
+        id: 'token-redundancies',
+        type: 'info',
+        message: `Found ${redundancies.length} sets of potentially redundant tokens`,
+        severity: 'low',
+        suggestion: 'Consider consolidating similar tokens to simplify your token system',
+      });
+    }
+
+    // Add finding for low coverage components
+    const lowCoverageComponents = componentUsage.filter(cu => cu.coverageScore < 50);
+    if (lowCoverageComponents.length > 0) {
+      findings.push({
+        id: 'token-low-component-coverage',
+        type: 'warning',
+        message: `${lowCoverageComponents.length} components have low token usage (< 50% coverage)`,
+        severity: 'medium',
+        suggestion: 'Review these components and replace hardcoded values with design tokens',
+      });
+    }
+
+    // Add positive finding for good coverage
+    if (coverageMetrics.coveragePercentage > 80) {
+      findings.push({
+        id: 'token-good-coverage',
+        type: 'success',
+        message: `Excellent token coverage: ${coverageMetrics.coveragePercentage.toFixed(1)}% of tokens are being used`,
+        severity: 'low',
+      });
+    }
+  }
+
+  private calculateScore(tokens: TokenInfo[], findings: Finding[], filesScanned: number, coverageReport?: TokenCoverageReport): number {
     let score = 100;
 
     // No tokens found is a critical issue
@@ -492,6 +576,38 @@ export class TokenAuditor {
     // Bonus for comprehensive token system
     if (tokens.length > 50) score += 5;
     if (tokens.length > 100) score += 5;
+
+    // Apply coverage-based scoring if coverage report is available
+    if (coverageReport) {
+      const { coverageMetrics } = coverageReport;
+      
+      // Deduct points based on coverage percentage
+      if (coverageMetrics.coveragePercentage < 30) {
+        score -= 20;
+      } else if (coverageMetrics.coveragePercentage < 50) {
+        score -= 10;
+      } else if (coverageMetrics.coveragePercentage < 70) {
+        score -= 5;
+      }
+      
+      // Bonus for high coverage
+      if (coverageMetrics.coveragePercentage > 80) {
+        score += 10;
+      }
+      
+      // Deduct for redundant tokens
+      if (coverageReport.redundancies.length > 5) {
+        score -= 5;
+      }
+      
+      // Deduct for many hardcoded values that match tokens
+      const hardcodedWithMatches = coverageReport.hardcodedValues.filter(hv => hv.matchedToken).length;
+      if (hardcodedWithMatches > 10) {
+        score -= 10;
+      } else if (hardcodedWithMatches > 5) {
+        score -= 5;
+      }
+    }
 
     return Math.max(0, Math.min(100, Math.round(score)));
   }

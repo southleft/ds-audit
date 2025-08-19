@@ -27,6 +27,7 @@ declare module '@types' {
     findings?: Finding[];
     recommendations?: Recommendation[];
     metadata?: Record<string, any>;
+    metrics?: Record<string, any>;
     description?: string;
   }
 
