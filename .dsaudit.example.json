@@ -1,5 +1,5 @@
 {
-  "projectPath": "/Users/tjpitre/Sites/dsaudit/src/dashboard/src",
+  "projectPath": "./",
   "outputPath": "./audit",
   "includePatterns": [
     "**/*.{js,jsx,ts,tsx,css,scss,json,md}"
@@ -19,12 +19,13 @@
     "accessibility": true
   },
   "ai": {
-    "enabled": true,
+    "enabled": false,
+    "apiKey": "your-claude-api-key-here",
     "model": "claude-sonnet-4-20250514"
   },
   "dashboard": {
     "enabled": true,
-    "port": 4321,
+    "port": 3000,
     "autoOpen": true
   }
 }

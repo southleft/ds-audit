@@ -124,7 +124,13 @@ dsaudit config --reset # Reset to defaults
 
 ## Configuration
 
-The tool creates a `.dsaudit.json` configuration file:
+The tool creates a `.dsaudit.json` configuration file. Copy `.dsaudit.example.json` to get started:
+
+```bash
+cp .dsaudit.example.json .dsaudit.json
+```
+
+Configuration options:
 
 ```json
 {

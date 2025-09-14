@@ -33,6 +33,9 @@ audit-logs/
 audit/
 output/
 
+# Configuration files (user-specific)
+.dsaudit.json
+
 # Environment variables
 .env
 .env.local

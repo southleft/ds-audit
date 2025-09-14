@@ -47,8 +47,8 @@ const __dirname = path.dirname(__filename);
     // Check parent directories
     path.join(__dirname, '..', 'dashboard', filename),
     path.join(__dirname, '..', '..', 'dist', 'dashboard', filename),
-    // Absolute path to the known location
-    `/Users/tjpitre/Sites/dsaudit/dist/dashboard/${filename}`
+    // Check from project root
+    path.join(process.cwd(), 'dist', 'dashboard', filename)
   ];
   
   console.log(`[DEBUG] Trying alternative paths...`);
