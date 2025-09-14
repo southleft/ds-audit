@@ -1,11 +1,14 @@
-# dsaudit Quick Start Guide
+# DSAudit Quick Start Guide
 
 ## Installation
 
-You don't need to install dsaudit globally. You can run it directly using npx:
-
 ```bash
-npx dsaudit init
+# Clone and build the tool
+git clone https://github.com/[yourusername]/dsaudit.git
+cd dsaudit
+npm install
+npm run build
+npm link
 ```
 
 ## Basic Usage
@@ -13,7 +16,7 @@ npx dsaudit init
 ### 1. Run an audit on your current directory
 
 ```bash
-npx dsaudit init
+dsaudit init
 ```
 
 This will:
@@ -25,21 +28,21 @@ This will:
 ### 2. Run on a specific directory
 
 ```bash
-npx dsaudit init --path /path/to/your/design-system
+dsaudit init --path /path/to/your/design-system
 ```
 
 ### 3. Run without prompts (use defaults)
 
 ```bash
-npx dsaudit init --no-interactive
+dsaudit init --no-interactive
 ```
 
-### 4. With AI-powered insights (requires Anthropic API key)
+### 4. With AI-powered insights (requires Claude API key)
 
 ```bash
-npx dsaudit init
+dsaudit init
 # Select "Enable AI insights" when prompted
-# Enter your Anthropic API key
+# Enter your Claude API key
 ```
 
 ## Understanding the Results
@@ -129,4 +132,4 @@ This is normal for projects without an established design system. Use the recomm
 3. Re-run the audit periodically to track progress
 4. Share results with your team
 
-Need help? Visit: https://github.com/yourusername/dsaudit
+Need help? Check the README for more details or contribute to the project!

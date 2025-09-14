@@ -35,6 +35,7 @@ output/
 
 # Configuration files (user-specific)
 .dsaudit.json
+.claude/
 
 # Environment variables
 .env

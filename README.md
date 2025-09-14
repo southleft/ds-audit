@@ -1,4 +1,4 @@
-# 🎨 dsaudit - Design System Audit CLI Tool
+# 🎨 DSAudit - Design System Audit CLI Tool
 
 A comprehensive CLI-based auditing tool that evaluates the health, structure, and completeness of code-based design systems. It provides deep insights into component quality, token usage, documentation completeness, and overall system maturity with actionable recommendations for improvement.
 
@@ -23,7 +23,7 @@ A comprehensive CLI-based auditing tool that evaluates the health, structure, an
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/dsaudit.git
+git clone https://github.com/[yourusername]/dsaudit.git
 cd dsaudit
 
 # Install dependencies
@@ -32,21 +32,25 @@ npm install
 # Build the tool
 npm run build
 
-# Link globally (optional)
+# Link globally for CLI usage
 npm link
 ```
 
 ### Running Your First Audit
 
 ```bash
-# Navigate to your design system project
+# After linking, navigate to your design system project
 cd /path/to/your/design-system
 
 # Run the audit
 dsaudit init
+```
 
-# Or use npx without installing
-npx dsaudit init
+### Alternative: Run Without Installing
+
+```bash
+# From the dsaudit directory
+node /path/to/dsaudit/dist/cli.js init
 ```
 
 ## Usage
@@ -171,12 +175,6 @@ Configuration options:
 - Export capabilities
 - Recommendation tracking
 
-## Hooks Integration
-
-This project includes Claude Code hooks for enhanced development:
-- **PreToolUse**: Validates changes against design system standards
-- **PostToolUse**: Runs automatic audits on modifications
-- **Notification**: Monitors system health during development
 
 ## 🛠️ Development
 
@@ -254,4 +252,4 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ---
 
-**Note**: This tool is in active development. Please report any issues or feature requests on the [GitHub Issues](https://github.com/yourusername/dsaudit/issues) page.
+**Note**: This tool is in active development. Contributions and feedback are welcome!
