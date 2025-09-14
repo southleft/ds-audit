@@ -19,13 +19,14 @@ export class ComponentAuditor {
     const allScannedPaths = new Set<string>();
     
     // Find component files - include monorepo patterns
+    // We'll filter out stories, tests, and index files manually since glob negation is not reliable
     const componentPatterns = [
-      '**/components/**/*.{tsx,jsx,ts,js}',
-      '**/src/components/**/*.{tsx,jsx,ts,js}',
-      '**/lib/components/**/*.{tsx,jsx,ts,js}',
-      '**/packages/*/components/**/*.{tsx,jsx,ts,js}',
-      '**/packages/*/src/components/**/*.{tsx,jsx,ts,js}',
-      '**/packages/*/lib/components/**/*.{tsx,jsx,ts,js}',
+      'src/components/**/*.{tsx,jsx,ts,js}',
+      'components/**/*.{tsx,jsx,ts,js}',
+      'lib/components/**/*.{tsx,jsx,ts,js}',
+      'packages/*/src/components/**/*.{tsx,jsx,ts,js}',
+      'packages/*/components/**/*.{tsx,jsx,ts,js}',
+      'packages/*/lib/components/**/*.{tsx,jsx,ts,js}',
     ];
     
     // Also scan for styles
@@ -78,12 +79,38 @@ export class ComponentAuditor {
           const ext = file.extension.toLowerCase();
           patternResults.fileTypes[ext] = (patternResults.fileTypes[ext] || 0) + 1;
           
-          // Only analyze component files
+          // Only analyze actual component files (double-check to exclude stories/tests/demos)
           if (category === 'Component Files') {
-            const componentInfo = await this.analyzeComponent(file.path);
-            if (componentInfo) {
-              components.push(componentInfo);
-              this.generateFindings(componentInfo, findings);
+            const fileName = path.basename(file.path);
+            const fileNameLower = fileName.toLowerCase();
+            const fileNameWithoutExt = path.basename(file.path, path.extname(file.path));
+
+            // Check if this is a story, test, demo, or index file
+            const isStoryFile = fileName.includes('.stories.') || fileName.includes('.story.');
+            const isTestFile = fileName.includes('.test.') || fileName.includes('.spec.') ||
+                               fileNameWithoutExt.endsWith('Test') || fileNameWithoutExt.endsWith('Tests');
+            const isDemoFile = fileNameLower.includes('demo') || fileNameLower.includes('showcase') ||
+                              fileNameLower.includes('example') || fileNameLower.includes('fixture') ||
+                              fileNameLower.includes('mock') || fileNameLower.includes('sample');
+            const isIndexFile = fileNameLower === 'index.ts' || fileNameLower === 'index.tsx' ||
+                               fileNameLower === 'index.js' || fileNameLower === 'index.jsx';
+            const isUtilityFile = fileNameLower.includes('util') || fileNameLower.includes('helper') ||
+                                 fileNameLower.includes('constant') || fileNameLower.includes('types');
+
+            // Skip non-component files
+            if (!isStoryFile && !isTestFile && !isDemoFile && !isIndexFile && !isUtilityFile) {
+              const componentInfo = await this.analyzeComponent(file.path);
+              if (componentInfo) {
+                // Check for duplicates before adding
+                const isDuplicate = components.some(c => c.name === componentInfo.name && c.path === componentInfo.path);
+                if (!isDuplicate) {
+                  components.push(componentInfo);
+                  this.generateFindings(componentInfo, findings);
+                }
+              }
+            } else {
+              // Log what we're skipping for debugging
+              console.log(`[ComponentAuditor] Skipping non-component file: ${fileName} (story: ${isStoryFile}, test: ${isTestFile}, demo: ${isDemoFile}, index: ${isIndexFile}, utility: ${isUtilityFile})`);
             }
           }
         }

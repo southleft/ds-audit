@@ -67,7 +67,7 @@ const Recommendations: React.FC<RecommendationsProps> = ({ auditResult }) => {
                 <Group gap="xs">
                   <Bot size={16} color="var(--mantine-color-violet-6)" />
                   <Text size="xs" c="dimmed">
-                    For detailed implementation guidance and code examples, use the "Ask Claude" feature in the AI Analysis section.
+                    For detailed implementation guidance and code examples, use the "Ask DSA" feature in the AI Analysis section.
                   </Text>
                 </Group>
               </Paper>

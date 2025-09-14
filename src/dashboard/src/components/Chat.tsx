@@ -21,7 +21,7 @@ const Chat: React.FC<ChatProps> = ({ auditResult }) => {
     {
       id: '0',
       role: 'assistant',
-      content: `Hi! I'm Claude, your AI assistant. I can help you understand your design system audit results. 
+      content: `Hi! I'm your Design Systems Assistant (DSA). I can help you understand your design system audit results. 
 
 I have access to your audit data showing:
 - Overall score: ${auditResult.overallScore} (Grade ${auditResult.overallGrade})
@@ -139,7 +139,7 @@ Feel free to ask me questions like:
       {/* Page Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Insights</Text>
-        <Title order={1} size="h2">Ask Claude</Title>
+        <Title order={1} size="h2">Ask DSA</Title>
       </div>
 
       <Card className="chat-card">
@@ -155,7 +155,7 @@ Feel free to ask me questions like:
                   variant={message.role === 'user' ? 'filled' : 'light'}
                   color={message.role === 'user' ? 'blue' : 'violet'}
                 >
-                  {message.role === 'user' ? 'You' : 'Claude'}
+                  {message.role === 'user' ? 'You' : 'DSA'}
                 </Badge>
                 <Text size="xs" c="dimmed">
                   {message.timestamp.toLocaleTimeString()}
@@ -199,7 +199,7 @@ Feel free to ask me questions like:
             <div className="message assistant">
               <div className="message-header">
                 <Badge size="sm" variant="light" color="violet">
-                  Claude
+                  DSA
                 </Badge>
               </div>
               <Group gap="xs">

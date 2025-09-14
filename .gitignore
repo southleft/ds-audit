@@ -31,6 +31,7 @@ Thumbs.db
 # Audit output (if users don't want to track audit results)
 audit-logs/
 audit/
+output/
 
 # Environment variables
 .env
@@ -38,6 +39,12 @@ audit/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Debug and test files
+debug-*.js
+test-*.sh
+*.backup
+*.backup.*
 
 # Package manager lock files (optional - you may want to keep package-lock.json)
 # package-lock.json

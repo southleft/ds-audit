@@ -20,51 +20,72 @@ export class TokenAuditor {
     const detailedPaths: any[] = [];
     const allScannedPaths = new Set<string>();
     
-    // Enhanced token file patterns for tiered structures
+    // PRIORITY 1: CSS files with actual custom properties (including source and generated)
+    const generatedCSSPatterns = [
+      // Source CSS files with tokens (common patterns)
+      '**/src/styles/**/*.css',           // Matches src/styles/tokens.css
+      '**/styles/**/*.css',                // Matches any styles directory
+      '**/tokens/**/*.css',                // Matches CSS in tokens directories
+      '**/css/**/*tokens*.css',            // Matches CSS files with "tokens" in name
+
+      // Generated/built CSS files
+      'styles/dist/**/*.css',              // Matches styles/dist/css/theme/tokens*.css
+      'dist/css/tokens*.css',              // Matches dist/css/tokens*.css
+      'dist/**/*tokens*.css',              // Fallback for any tokens in dist
+      '**/dist/**/*tokens*.css',           // Recursive search for tokens
+      '**/build/**/*tokens*.css',
+
+      // Common token file patterns
+      '**/*tokens*.css',                   // Any CSS file with "tokens" in the name
+      '**/*theme*.css',                    // Theme CSS files often contain tokens
+      '**/*variables*.css',                // Variable CSS files
+
+      // Exclude minified files
+      '!**/*.min.css'
+    ];
+    
+    // PRIORITY 2: Source token files (for reference, but not primary counting)
     const tokenFilePatterns = [
-      // Specific token directories
-      '**/tokens/*.{json,js,ts}',
+      // Specific token directories - including nested patterns
+      '**/tokens/**/*.{json,js,ts}',      // Any tokens directory at any depth
+      '**/tokens/*.{json,js,ts}',         // Direct children of tokens directory
+      '**/design-tokens/**/*.{json,js,ts}',
       '**/design-tokens/*.{json,js,ts}',
-      '**/tokens/!(*.d).{json,js,ts}', // Exclude .d.ts files
+      '**/tokens/!(*.d).{json,js,ts}',    // Exclude .d.ts files
       '**/design-system/tokens/**/*.{json,js,ts}',
-      
+
       // Tiered token structure patterns (Altitude-style)
       '**/styles/tokens/**/*.json',
       '**/libs/*/styles/tokens/**/*.json',
       '**/packages/*/styles/tokens/**/*.json',
-      '**/styles/dist/tokens.json', // Compiled tokens
-      '**/dist/tokens/*.json',
-      
-      // Web component patterns
-      '**/components/**/*.scss',
-      '**/web-components/**/*.scss',
-      '**/libs/*/components/**/*.scss',
-      
+
       // Common token file names
       'tokens.{json,js,ts}',
       'design-tokens.{json,js,ts}',
       '**/theme/tokens.{json,js,ts}',
-      
+      '**/*.tokens.{json,js,ts}',         // Files ending with .tokens
+
       // Style Dictionary patterns
       '**/properties/**/*.{json,js}',
-      '**/build/tokens.{json,js}', // Only if in build folder
-      
-      // Exclude generated/build files
+
+      // Exclude only critical generated files
       '!**/node_modules/**',
-      '!**/dist/**',
       '!**/.next/**',
-      '!**/build/**',
       '!**/*.generated.*',
-      '!**/*.min.*'
+      '!**/*.min.*',
+      '!**/*.d.ts'                         // Exclude TypeScript declaration files
     ];
     
-    // CSS Custom Properties patterns
+    // CSS Custom Properties patterns (other CSS files)
     const cssVarPatterns = [
       '**/*.css',
       '**/*.scss',
       '**/*.sass',
       '**/*.less',
       '**/packages/*/*.{css,scss,sass,less}',
+      '!**/node_modules/**',
+      '!**/*.min.css',
+      '!**/*.min.scss'
     ];
     
     // Theme configuration patterns
@@ -77,12 +98,15 @@ export class TokenAuditor {
     ];
     
     const allPatterns = {
-      'Token Files': tokenFilePatterns,
-      'Style Files': cssVarPatterns,
+      'Generated CSS': generatedCSSPatterns,  // Priority 1: Actual CSS custom properties
+      'Token Files': tokenFilePatterns,       // Priority 2: Source token files
+      'Style Files': cssVarPatterns,          // Priority 3: Other CSS files
       'Theme Config': themePatterns,
     };
     
     let totalFilesScanned = 0;
+    const cssTokens: TokenInfo[] = [];  // Store CSS custom properties separately
+    const jsonTokens: TokenInfo[] = []; // Store JSON tokens separately
     
     for (const [category, patterns] of Object.entries(allPatterns)) {
       const patternResults = {
@@ -92,7 +116,27 @@ export class TokenAuditor {
       };
       
       for (const pattern of patterns) {
-        const files = await this.scanner.scanFiles(pattern);
+        // For CSS token files, don't exclude dist directories
+        let files: any[];
+        if (category === 'Generated CSS') {
+          // Use custom glob for CSS files to avoid excluding dist
+          const { glob } = await import('glob');
+          const cssFiles = await glob(pattern, {
+            cwd: this.config.projectPath,
+            ignore: ['**/node_modules/**'], // Only exclude node_modules, NOT dist
+            absolute: false,
+          });
+          files = await Promise.all(cssFiles.map(async (filePath: string) => ({
+            path: filePath,
+            name: path.basename(filePath),
+            extension: path.extname(filePath),
+            directory: path.dirname(filePath),
+            size: 0,
+            modified: new Date()
+          })));
+        } else {
+          files = await this.scanner.scanFiles(pattern);
+        }
         totalFilesScanned += files.length;
         
         for (const file of files) {
@@ -102,10 +146,17 @@ export class TokenAuditor {
           const ext = file.extension.toLowerCase();
           patternResults.fileTypes[ext] = (patternResults.fileTypes[ext] || 0) + 1;
           
-          // Analyze token files
-          if (category === 'Token Files' || (category === 'Style Files' && ext !== '.css')) {
+          // Prioritize CSS files for token extraction
+          if (category === 'Generated CSS' && ext === '.css') {
+            // Extract CSS custom properties from generated files
+            console.log(`[TokenAuditor] Found CSS file: ${file.path}`);
             const fileTokens = await this.analyzeTokenFile(file.path);
-            tokens.push(...fileTokens);
+            console.log(`[TokenAuditor] Extracted ${fileTokens.length} tokens from ${file.path}`);
+            cssTokens.push(...fileTokens);
+          } else if (category === 'Token Files' && ext !== '.css') {
+            // Only use JSON tokens if no CSS tokens found
+            const fileTokens = await this.analyzeTokenFile(file.path);
+            jsonTokens.push(...fileTokens);
           }
         }
       }
@@ -113,6 +164,23 @@ export class TokenAuditor {
       if (patternResults.matches.length > 0) {
         detailedPaths.push(patternResults);
       }
+    }
+    
+    // Use CSS tokens if found, otherwise fall back to JSON tokens
+    if (cssTokens.length > 0) {
+      // Deduplicate CSS tokens by name (same tokens appear in multiple theme files)
+      const uniqueTokens = new Map<string, TokenInfo>();
+      for (const token of cssTokens) {
+        if (!uniqueTokens.has(token.name)) {
+          uniqueTokens.set(token.name, token);
+        }
+      }
+      const dedupedTokens = Array.from(uniqueTokens.values());
+      console.log(`[TokenAuditor] Using ${dedupedTokens.length} unique CSS custom properties (from ${cssTokens.length} total)`);
+      tokens.push(...dedupedTokens);
+    } else if (jsonTokens.length > 0) {
+      console.log(`[TokenAuditor] No CSS tokens found, using ${jsonTokens.length} JSON tokens`);
+      tokens.push(...jsonTokens);
     }
 
     const filesScanned = totalFilesScanned;
@@ -270,24 +338,8 @@ export class TokenAuditor {
   }
 
   private parseCSSTokens(content: string, filePath: string): TokenInfo[] {
-    const tokens: TokenInfo[] = [];
-    
-    // Extract CSS custom properties
-    const customPropRegex = /--([-\w]+)\s*:\s*([^;]+);/g;
-    let match;
-
-    while ((match = customPropRegex.exec(content)) !== null) {
-      tokens.push({
-        name: `--${match[1]}`,
-        value: match[2].trim(),
-        type: this.detectTokenType(match[1], match[2]),
-        category: this.detectTokenCategory(match[1]),
-        path: filePath,
-        usage: 0,
-      });
-    }
-
-    return tokens;
+    // Use the new CSS variable parser from TokenParser
+    return TokenParser.parseCSSVariables(content, filePath);
   }
 
   private detectTokenType(name: string, value: any): TokenInfo['type'] {

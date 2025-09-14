@@ -1,10 +1,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { 
-  AuditConfig, 
-  TokenInfo, 
-  TokenUsageInfo, 
-  HardcodedValue, 
+import type {
+  AuditConfig,
+  TokenInfo,
+  TokenUsageInfo,
+  HardcodedValue,
   TokenCoverageMetrics,
   ComponentTokenUsage,
   TokenRedundancy
@@ -12,6 +12,7 @@ import type {
 import { FileScanner } from '../utils/FileScanner.js';
 import { TokenMatcher } from '../utils/TokenMatcher.js';
 import { TokenParser } from '../utils/TokenParser.js';
+import { StyleDictionaryDetector, type TokenTransformPattern } from '../utils/StyleDictionaryDetector.js';
 
 export interface TokenCoverageReport {
   usageMapping: TokenUsageInfo[];
@@ -38,15 +39,21 @@ export class TokenCoverageAuditor {
   private tokens: TokenInfo[];
   private tokenMatcher: TokenMatcher;
   private tokenUsageMap: Map<string, TokenUsageInfo> = new Map();
+  private transformPattern: TokenTransformPattern | null = null;
+  private styleDictionaryDetector: StyleDictionaryDetector;
 
   constructor(config: AuditConfig, tokens: TokenInfo[]) {
     this.config = config;
     this.scanner = new FileScanner(config);
     this.tokens = tokens;
     this.tokenMatcher = new TokenMatcher(tokens);
+    this.styleDictionaryDetector = new StyleDictionaryDetector(config.projectPath);
   }
 
   async analyzeCoverage(): Promise<TokenCoverageReport> {
+    // Detect Style Dictionary configuration and patterns
+    await this.detectTransformPatterns();
+
     // Initialize token usage map
     this.initializeTokenUsageMap();
 
@@ -69,6 +76,37 @@ export class TokenCoverageAuditor {
       coverageMetrics,
       componentUsage
     };
+  }
+
+  private async detectTransformPatterns(): Promise<void> {
+    try {
+      // First try to find Style Dictionary config files
+      const configFiles = await this.styleDictionaryDetector.detectConfigFiles();
+
+      if (configFiles.length > 0) {
+        console.log(`📚 Found Style Dictionary config: ${configFiles[0]}`);
+        this.transformPattern = await this.styleDictionaryDetector.parseTransformPatterns(configFiles[0]);
+      } else {
+        // Fallback to detecting patterns from CSS files
+        console.log('📚 No Style Dictionary config found, detecting patterns from CSS...');
+        this.transformPattern = await this.styleDictionaryDetector.detectPatternsFromCSS();
+      }
+
+      if (this.transformPattern) {
+        console.log(`📐 Detected token pattern:`, {
+          prefix: this.transformPattern.prefix,
+          caseStyle: this.transformPattern.caseStyle,
+          separator: this.transformPattern.separator
+        });
+      }
+    } catch (error) {
+      console.warn('Could not detect Style Dictionary patterns:', error);
+      // Use default pattern
+      this.transformPattern = {
+        caseStyle: 'kebab',
+        separator: '-'
+      };
+    }
   }
 
   private initializeTokenUsageMap(): void {
@@ -100,7 +138,7 @@ export class TokenCoverageAuditor {
 
   private async scanSourceFiles(): Promise<HardcodedValue[]> {
     const hardcodedValues: Map<string, HardcodedValue> = new Map();
-    
+
     // Enhanced patterns for source files including web components
     const sourcePatterns = [
       // Component files
@@ -108,16 +146,18 @@ export class TokenCoverageAuditor {
       '**/src/**/*.{js,jsx,ts,tsx,vue,svelte}',
       '**/app/**/*.{js,jsx,ts,tsx}',
       '**/pages/**/*.{js,jsx,ts,tsx}',
-      
+
       // Web component patterns (Altitude-style)
       '**/*.component.ts',
       '**/web-components/**/*.ts',
       '**/libs/*/components/**/*.ts',
       '**/packages/*/components/**/*.ts',
-      
-      // Style files
+
+      // Style files (INCLUDING CSS MODULES)
       '**/components/**/*.{css,scss,sass,less}',
+      '**/components/**/*.module.{css,scss,sass,less}',
       '**/src/**/*.{css,scss,sass,less}',
+      '**/src/**/*.module.{css,scss,sass,less}',
       '**/styles/**/*.{css,scss,sass,less}',
       '**/libs/*/components/**/*.{css,scss,sass,less}',
       
@@ -243,31 +283,57 @@ export class TokenCoverageAuditor {
     // Parse CSS for custom properties and references
     const parsed = TokenParser.parseCSSForTokens(content);
 
+    // Debug logging for AvatarIndicator
+    if (filePath.includes('AvatarIndicator')) {
+      console.log(`[DEBUG] Scanning AvatarIndicator CSS file: ${filePath}`);
+      console.log(`[DEBUG] Found ${parsed.usages.length} CSS variable usages:`);
+      parsed.usages.forEach(usage => {
+        console.log(`  - ${usage.name} at line ${usage.line}`);
+      });
+    }
+
     // Process CSS custom property usages
     for (const { name, line, context } of parsed.usages) {
-      // Try to find the token by CSS custom property name
-      const directUsage = this.tokenUsageMap.get(name);
-      if (directUsage) {
-        directUsage.usageCount++;
-        directUsage.files.push({
+      // For CSS variables, we should track them by their actual CSS variable name
+      // not by some other token name
+
+      // Check if we already have a usage entry for this CSS variable name
+      let usage = this.tokenUsageMap.get(name);
+
+      if (!usage) {
+        // Try to find if this CSS variable exists in our tokens
+        const tokenWithThisCSS = this.tokens.find(t =>
+          t.name === name ||
+          t.value === name ||
+          // Check if the token's value references this CSS variable
+          (typeof t.value === 'string' && t.value.includes(name))
+        );
+
+        if (tokenWithThisCSS || this.isCSSTokenInSystem(name)) {
+          // Create a new usage entry for this CSS variable
+          usage = {
+            tokenName: name,
+            tokenValue: '',  // We'll set this if we find the actual value
+            usageCount: 0,
+            files: []
+          };
+          this.tokenUsageMap.set(name, usage);
+        }
+      }
+
+      if (usage) {
+        usage.usageCount++;
+        usage.files.push({
           path: filePath,
           line,
           context: `CSS variable: ${context}`
         });
-      } else {
-        // Try to find by custom property name matching
-        const matchedToken = this.findTokenByCustomPropertyName(name);
-        if (matchedToken) {
-          const tokenUsage = this.tokenUsageMap.get(matchedToken.name);
-          if (tokenUsage) {
-            tokenUsage.usageCount++;
-            tokenUsage.files.push({
-              path: filePath,
-              line,
-              context: `CSS variable: ${context}`
-            });
-          }
+
+        if (filePath.includes('AvatarIndicator')) {
+          console.log(`  ✓ Tracking usage of ${name}`);
         }
+      } else if (filePath.includes('AvatarIndicator')) {
+        console.log(`  ✗ ${name} not found in token system`);
       }
     }
 
@@ -488,17 +554,61 @@ export class TokenCoverageAuditor {
   /**
    * Find token by CSS custom property name using enhanced mapping
    */
+  private isCSSTokenInSystem(cssVarName: string): boolean {
+    // Check if this CSS variable name exists in our token system
+    // This includes tokens parsed from CSS files
+    return this.tokens.some(t =>
+      t.name === cssVarName ||
+      (typeof t.value === 'string' && t.value === cssVarName)
+    );
+  }
+
   private findTokenByCustomPropertyName(customPropName: string): TokenInfo | undefined {
+    // Direct match first - tokens might be stored with their CSS names
+    const directToken = this.tokens.find(t => t.name === customPropName);
+    if (directToken) {
+      return directToken;
+    }
+
     const cleanProp = customPropName.toLowerCase().replace(/^--/, '');
-    
-    // Direct name match first
+
+    // Try direct match without prefix
     for (const token of this.tokens) {
-      if (token.name === cleanProp || token.name === customPropName) {
+      if (token.name.toLowerCase() === cleanProp || token.name === customPropName) {
         return token;
       }
     }
-    
-    // Use the CSS mapping for comprehensive matching
+
+    // If we have a detected pattern, use it to match tokens
+    if (this.transformPattern && this.transformPattern.prefix) {
+      // Remove the detected prefix and try to match
+      const withoutPrefix = cleanProp.replace(new RegExp(`^${this.transformPattern.prefix}[-_]?`), '');
+
+      for (const token of this.tokens) {
+        // Try to match the token name without the CSS variable prefix
+        const tokenNameClean = token.name.toLowerCase().replace(/^--/, '');
+
+        // Check if this could be the same token with different formatting
+        if (this.areTokenNamesEquivalent(withoutPrefix, tokenNameClean)) {
+          return token;
+        }
+
+        // Generate possible CSS variable names for this token
+        // Extract path-like structure from token name
+        const tokenPath = tokenNameClean.split(/[-_.]/);
+        if (tokenPath.length > 0) {
+          const possibleNames = this.styleDictionaryDetector.generateCSSVariableName(
+            tokenPath,
+            this.transformPattern
+          );
+          if (possibleNames.includes(customPropName)) {
+            return token;
+          }
+        }
+      }
+    }
+
+    // Fallback: Use the CSS mapping for comprehensive matching
     const cssMapping = this.generateTokenToCSSMapping();
     for (const [tokenName, cssProps] of cssMapping.entries()) {
       for (const cssProp of cssProps) {
@@ -507,34 +617,41 @@ export class TokenCoverageAuditor {
         }
       }
     }
-    
+
     // Enhanced fuzzy match with pattern recognition
     const propParts = cleanProp.split(/[-_]/);
-    
+
     for (const token of this.tokens) {
-      const tokenParts = token.name.toLowerCase().split(/[.-_]/);
-      
+      const tokenParts = token.name.toLowerCase().replace(/^--/, '').split(/[.-_]/);
+
       // Check if most token parts are present in prop name
-      const matchedParts = tokenParts.filter(part => 
-        propParts.some(propPart => 
-          propPart.includes(part) || part.includes(propPart) || 
+      const matchedParts = tokenParts.filter(part =>
+        propParts.some(propPart =>
+          propPart.includes(part) || part.includes(propPart) ||
           propPart === part
         )
       );
-      
+
       // Consider it a match if 70% or more parts match
       if (matchedParts.length / tokenParts.length >= 0.7) {
         return token;
       }
     }
-    
-    // Special case: handle theme prefixes (al-theme, bs, md-sys, etc.)
-    const withoutPrefix = cleanProp.replace(/^(al-theme|al|bs|md-sys|theme)-/, '');
-    if (withoutPrefix !== cleanProp) {
-      return this.findTokenByCustomPropertyName(`--${withoutPrefix}`);
-    }
-    
+
     return undefined;
+  }
+
+  /**
+   * Check if two token names are equivalent despite formatting differences
+   */
+  private areTokenNamesEquivalent(name1: string, name2: string): boolean {
+    // Normalize both names to compare
+    const normalize = (name: string) => name
+      .toLowerCase()
+      .replace(/[-_.]/g, '')
+      .replace(/\s+/g, '');
+
+    return normalize(name1) === normalize(name2);
   }
 
   private isComment(line: string, ext: string): boolean {
@@ -738,15 +855,17 @@ export class TokenCoverageAuditor {
 
   private async analyzeComponentUsage(): Promise<ComponentTokenUsage[]> {
     const componentUsage: ExtendedComponentTokenUsage[] = [];
-    
+
     console.log('🔍 Starting component analysis...');
-    
-    // Find component files with more targeted patterns
+
+    // Find component files with more targeted patterns (avoid duplicates)
     const componentPatterns = [
-      '**/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
-      '**/src/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
-      '**/lib/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
-      '**/ui/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      'src/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      'components/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      'lib/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      'packages/*/src/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      'packages/*/components/**/*.{js,jsx,ts,tsx,vue,svelte}',
+      'ui/**/*.{js,jsx,ts,tsx,vue,svelte}',
       // Exclude test, story, and other non-component files
       '!**/*.test.*',
       '!**/*.spec.*',
@@ -757,10 +876,41 @@ export class TokenCoverageAuditor {
       '!**/node_modules/**'
     ];
 
-    const componentFiles = await this.scanner.scanFiles(componentPatterns);
-    console.log(`📁 Found ${componentFiles.length} component files to analyze`);
+    const allFiles = await this.scanner.scanFiles(componentPatterns);
 
+    // Manually filter out stories, tests, demos, and index files
+    const componentFiles = allFiles.filter(file => {
+      const fileName = path.basename(file.path);
+      const fileNameLower = fileName.toLowerCase();
+      const fileNameWithoutExt = path.basename(file.path, path.extname(file.path));
+
+      const isStoryFile = fileName.includes('.stories.') || fileName.includes('.story.');
+      const isTestFile = fileName.includes('.test.') || fileName.includes('.spec.') ||
+                         fileNameWithoutExt.endsWith('Test') || fileNameWithoutExt.endsWith('Tests');
+      const isDemoFile = fileNameLower.includes('demo') || fileNameLower.includes('showcase') ||
+                        fileNameLower.includes('example') || fileNameLower.includes('fixture') ||
+                        fileNameLower.includes('mock') || fileNameLower.includes('sample');
+      const isIndexFile = fileNameLower === 'index.ts' || fileNameLower === 'index.tsx' ||
+                         fileNameLower === 'index.js' || fileNameLower === 'index.jsx';
+      const isUtilityFile = fileNameLower.includes('util') || fileNameLower.includes('helper') ||
+                           fileNameLower.includes('constant') || fileNameLower.includes('types');
+
+      return !isStoryFile && !isTestFile && !isDemoFile && !isIndexFile && !isUtilityFile;
+    });
+
+    // Deduplicate component files by path
+    const uniqueComponents = new Map<string, typeof componentFiles[0]>();
     for (const file of componentFiles) {
+      const key = file.path; // Use path as the unique key
+      if (!uniqueComponents.has(key)) {
+        uniqueComponents.set(key, file);
+      }
+    }
+    const dedupedComponentFiles = Array.from(uniqueComponents.values());
+
+    console.log(`📁 Found ${dedupedComponentFiles.length} component files to analyze`);
+
+    for (const file of dedupedComponentFiles) {
       try {
         const tokensUsed = new Set<string>();
         let hardcodedCount = 0;
@@ -769,45 +919,73 @@ export class TokenCoverageAuditor {
 
         console.log(`🧩 Analyzing component: ${componentName} (${componentType})`);
 
-        // Check which tokens are used in this component
+        // Check which tokens are used in this component AND its CSS module
         let tokenFoundInComponent = false;
+
+        // Also check for corresponding CSS module file
+        const cssModulePath = file.path.replace(/\.(jsx?|tsx?)$/, '.module.css');
+        const scssModulePath = file.path.replace(/\.(jsx?|tsx?)$/, '.module.scss');
+
+        // Debug logging for AvatarIndicator
+        if (componentName === 'AvatarIndicator') {
+          console.log(`[DEBUG] Checking tokenUsageMap for AvatarIndicator component`);
+          console.log(`  Component file: ${file.path}`);
+          console.log(`  CSS module path: ${cssModulePath}`);
+        }
+
         for (const [tokenName, usage] of this.tokenUsageMap.entries()) {
-          const usedInComponent = usage.files.some(f => f.path === file.path);
+          const usedInComponent = usage.files.some(f =>
+            f.path === file.path ||
+            f.path === cssModulePath ||
+            f.path === scssModulePath
+          );
           if (usedInComponent) {
             tokensUsed.add(tokenName);
             tokenFoundInComponent = true;
+
+            if (componentName === 'AvatarIndicator') {
+              console.log(`  ✓ Token ${tokenName} used in component (${usage.files.length} references)`);
+            }
           }
         }
 
-        // Count hardcoded values in component by reading the file
-        const content = await this.scanner.readFile(file.path);
-        const styleValues = this.extractAllStyleValues(content, path.extname(file.path));
-        
-        let hardcodedFound = false;
-        for (const { value, property } of styleValues) {
-          const normalizedValue = this.normalizeValue(value);
-          
-          // Skip token references and non-hardcodable values
-          if (TokenParser.isTokenReference(normalizedValue)) {
-            continue;
-          }
-          
-          const exactMatch = this.tokenMatcher.findExactMatch(normalizedValue, property);
-          
-          if (!exactMatch && this.isHardcodableValue(normalizedValue, property)) {
-            hardcodedCount++;
-            hardcodedFound = true;
+        if (componentName === 'AvatarIndicator') {
+          console.log(`  Total unique tokens found: ${tokensUsed.size}`);
+        }
+
+        // Also scan the CSS module file if it exists
+        const cssModuleFile = file.path.replace(/\.(tsx?|jsx?)$/, '.module.css');
+        const scssModuleFile = file.path.replace(/\.(tsx?|jsx?)$/, '.module.scss');
+
+        let cssContent = '';
+        try {
+          // Try to read CSS module file
+          cssContent = await this.scanner.readFile(cssModuleFile);
+        } catch {
+          try {
+            // Try SCSS module as fallback
+            cssContent = await this.scanner.readFile(scssModuleFile);
+          } catch {
+            // No CSS module file found
           }
         }
 
-        // Calculate relevant tokens for this component type
-        const relevantTokens = this.getRelevantTokensForComponent(componentType);
-        const relevantTokenCount = relevantTokens.length;
+        // Count hardcoded values in both JS and CSS files
+        const jsContent = await this.scanner.readFile(file.path);
+        const allContent = jsContent + '\n' + cssContent;
 
-        // Calculate realistic coverage score based on relevant tokens only
-        const coverageScore = relevantTokenCount > 0
-          ? Math.min(100, (tokensUsed.size / relevantTokenCount) * 100)
-          : 0;
+        // Extract all style values from both files
+        const hardcodedValues = await this.detectHardcodedValues(allContent, file.path);
+        hardcodedCount = hardcodedValues.length;
+
+        // NEW CALCULATION: Coverage based on token usage vs hardcoded values
+        // Perfect coverage = using tokens for everything
+        // Poor coverage = many hardcoded values that could be tokens
+
+        const totalStyleValues = tokensUsed.size + hardcodedCount;
+        const coverageScore = totalStyleValues > 0
+          ? (tokensUsed.size / totalStyleValues) * 100
+          : tokensUsed.size > 0 ? 100 : 0;
 
         // Determine if component needs attention
         const { needsAttention, reasons } = this.evaluateComponentAttention(
@@ -826,7 +1004,7 @@ export class TokenCoverageAuditor {
           needsAttention,
           attentionReasons: reasons,
           componentType,
-          relevantTokenCount
+          relevantTokenCount: 0 // Not used in new calculation
         };
 
         componentUsage.push(usage);
@@ -843,6 +1021,125 @@ export class TokenCoverageAuditor {
     return componentUsage
       .map(({ componentType, relevantTokenCount, ...usage }) => usage)
       .sort((a, b) => a.coverageScore - b.coverageScore);
+  }
+
+  /**
+   * Detect hardcoded values in CSS/JS that could/should be tokens
+   */
+  private async detectHardcodedValues(content: string, filePath: string): Promise<Array<{ value: string; property: string; line?: number }>> {
+    const hardcodedValues: Array<{ value: string; property: string; line?: number }> = [];
+    const lines = content.split('\n');
+
+    // Patterns for values that should likely be tokens
+    const patterns = {
+      // Pixel values (spacing, sizes, borders)
+      pixelValues: /(\d+(?:\.\d+)?px)/g,
+      // Rem/em values (spacing, font sizes)
+      remEmValues: /(\d+(?:\.\d+)?(?:rem|em))/g,
+      // Color values (hex, rgb, hsl)
+      hexColors: /(#[0-9a-fA-F]{3,8})/g,
+      rgbColors: /(rgba?\([^)]+\))/g,
+      hslColors: /(hsla?\([^)]+\))/g,
+      // Timing values (animations, transitions)
+      timingValues: /(\d+(?:\.\d+)?(?:ms|s))/g,
+      // Border radius percentages (except 50% for circles)
+      borderRadius: /border-radius:\s*(\d+(?:\.\d+)?%|[\d.]+(?:px|rem|em))/gi,
+      // Box shadows with explicit values
+      boxShadow: /box-shadow:\s*([^;]+)/gi,
+      // Font weights as numbers
+      fontWeights: /font-weight:\s*(\d{3})/gi,
+      // Line heights as numbers or units
+      lineHeights: /line-height:\s*([\d.]+(?:px|rem|em)?)/gi,
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNum = i + 1;
+
+      // Skip comments
+      if (line.trim().startsWith('//') || line.trim().startsWith('/*') || line.trim().startsWith('*')) {
+        continue;
+      }
+
+      // Skip lines that are using CSS variables
+      if (line.includes('var(--')) {
+        continue;
+      }
+
+      // Check for pixel values in CSS properties
+      if (line.match(/(?:width|height|padding|margin|gap|top|left|right|bottom|font-size|border-width):/i)) {
+        const pixelMatches = line.match(patterns.pixelValues);
+        if (pixelMatches) {
+          pixelMatches.forEach(value => {
+            // Skip 0px and 1px for borders (often intentional)
+            if (value !== '0px' && !(value === '1px' && line.includes('border'))) {
+              hardcodedValues.push({
+                value,
+                property: this.extractPropertyFromLine(line),
+                line: lineNum
+              });
+            }
+          });
+        }
+      }
+
+      // Check for color values
+      const hexMatches = line.match(patterns.hexColors);
+      if (hexMatches) {
+        hexMatches.forEach(value => {
+          hardcodedValues.push({
+            value,
+            property: this.extractPropertyFromLine(line),
+            line: lineNum
+          });
+        });
+      }
+
+      const rgbMatches = line.match(patterns.rgbColors);
+      if (rgbMatches) {
+        rgbMatches.forEach(value => {
+          hardcodedValues.push({
+            value,
+            property: this.extractPropertyFromLine(line),
+            line: lineNum
+          });
+        });
+      }
+
+      // Check for timing values
+      if (line.match(/(?:transition|animation|duration|delay):/i)) {
+        const timingMatches = line.match(patterns.timingValues);
+        if (timingMatches) {
+          timingMatches.forEach(value => {
+            hardcodedValues.push({
+              value,
+              property: this.extractPropertyFromLine(line),
+              line: lineNum
+            });
+          });
+        }
+      }
+
+      // Check for font weights
+      const fontWeightMatches = line.match(patterns.fontWeights);
+      if (fontWeightMatches) {
+        hardcodedValues.push({
+          value: fontWeightMatches[1],
+          property: 'font-weight',
+          line: lineNum
+        });
+      }
+    }
+
+    return hardcodedValues;
+  }
+
+  /**
+   * Extract CSS property name from a line
+   */
+  private extractPropertyFromLine(line: string): string {
+    const match = line.match(/([a-z-]+)\s*:/i);
+    return match ? match[1] : 'unknown';
   }
 
   private extractAllStyleValues(content: string, ext: string): Array<{ property: string; value: string }> {
@@ -947,53 +1244,47 @@ export class TokenCoverageAuditor {
 
   /**
    * Evaluate if a component needs attention based on multiple criteria
+   * New logic: Focus on hardcoded values rather than arbitrary coverage percentages
    */
   private evaluateComponentAttention(
-    coverageScore: number, 
-    hardcodedCount: number, 
+    coverageScore: number,
+    hardcodedCount: number,
     tokensUsedCount: number,
     componentType: ComponentType
   ): { needsAttention: boolean; reasons: string[] } {
     const reasons: string[] = [];
-    
-    // Coverage thresholds vary by component type
-    const coverageThresholds = {
-      text: 40,        // Text components can have decent coverage with fewer tokens
-      layout: 25,      // Layout components typically use fewer design tokens
-      button: 50,      // Buttons should use a good variety of tokens
-      input: 45,       // Input components should use multiple token types
-      card: 40,        // Cards should use spacing, borders, shadows
-      navigation: 35,  // Navigation uses color and spacing tokens
-      unknown: 30      // Default threshold for unknown components
-    };
-    
-    const threshold = coverageThresholds[componentType] || 30;
-    
-    // Low coverage
-    if (coverageScore < threshold) {
-      reasons.push(`Low token coverage (${coverageScore.toFixed(1)}% < ${threshold}%)`);
+
+    // NEW EVALUATION CRITERIA:
+    // Good: 100% coverage (no hardcoded values)
+    // Acceptable: 80%+ coverage (few hardcoded values)
+    // Needs attention: <80% coverage (many hardcoded values)
+
+    // Check for poor coverage (too many hardcoded values)
+    if (coverageScore < 80) {
+      reasons.push(`Token coverage only ${coverageScore.toFixed(1)}% - ${hardcodedCount} hardcoded values found`);
     }
-    
-    // High number of hardcoded values
-    const hardcodedThreshold = componentType === 'text' ? 3 : 5;
-    if (hardcodedCount > hardcodedThreshold) {
-      reasons.push(`High hardcoded values (${hardcodedCount} > ${hardcodedThreshold})`);
+
+    // Check for high number of hardcoded values (absolute threshold)
+    if (hardcodedCount > 10) {
+      reasons.push(`High number of hardcoded values (${hardcodedCount})`);
+    } else if (hardcodedCount > 5) {
+      reasons.push(`Multiple hardcoded values (${hardcodedCount}) that could be tokens`);
     }
-    
-    // Zero token usage (very bad)
-    if (tokensUsedCount === 0) {
-      reasons.push('No design tokens used');
+
+    // Zero token usage when there are style values is very bad
+    if (tokensUsedCount === 0 && hardcodedCount > 0) {
+      reasons.push('No design tokens used - all values are hardcoded');
     }
-    
-    // Component type specific checks
-    if (componentType === 'button' && coverageScore < 30) {
-      reasons.push('Buttons should use color, spacing, and typography tokens');
+
+    // Perfect score recognition
+    if (coverageScore === 100 && tokensUsedCount > 0) {
+      // This is good! No reasons for attention needed
+      return {
+        needsAttention: false,
+        reasons: []
+      };
     }
-    
-    if (componentType === 'input' && hardcodedCount > 3) {
-      reasons.push('Input components should avoid hardcoded styling');
-    }
-    
+
     return {
       needsAttention: reasons.length > 0,
       reasons

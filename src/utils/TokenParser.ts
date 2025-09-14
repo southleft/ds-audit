@@ -88,6 +88,99 @@ export class TokenParser {
   private static readonly spacingPatterns = /^\d+(\.\d+)?(px|rem|em|%|vh|vw)$/;
 
   /**
+   * Parse CSS custom properties from generated CSS files
+   */
+  static parseCSSVariables(content: string, filePath: string): TokenInfo[] {
+    const tokens: TokenInfo[] = [];
+    const cssVarRegex = /--([\w-]+):\s*([^;]+);/g;
+
+    let match;
+    while ((match = cssVarRegex.exec(content)) !== null) {
+      const varName = `--${match[1]}`;
+      const varValue = match[2].trim();
+
+      // Include ALL CSS variables as tokens, even those that reference other variables
+      // These are semantic tokens that reference primitive tokens and are valid tokens
+      tokens.push({
+        name: varName,
+        value: varValue,
+        type: this.inferTokenTypeFromCSSVar(varName, varValue),
+        path: filePath,
+        category: this.getCategoryFromCSSVar(varName),
+        usage: 0,
+        // Mark if this is an alias/reference to another token
+        aliasOf: varValue.startsWith('var(') ? varValue.replace(/var\((--[^)]+)\)/, '$1') : undefined
+      });
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Infer token type from CSS variable name and value
+   */
+  private static inferTokenTypeFromCSSVar(varName: string, varValue: string): 'color' | 'spacing' | 'typography' | 'shadow' | 'border' | 'other' {
+    const nameLower = varName.toLowerCase();
+    const valueLower = varValue.toLowerCase();
+    
+    // Check by name patterns
+    if (nameLower.includes('color') || nameLower.includes('bg') || 
+        nameLower.includes('background') || nameLower.includes('fill')) {
+      return 'color';
+    }
+    if (nameLower.includes('space') || nameLower.includes('spacing') || 
+        nameLower.includes('margin') || nameLower.includes('padding') ||
+        nameLower.includes('gap') || nameLower.includes('inset')) {
+      return 'spacing';
+    }
+    if (nameLower.includes('font') || nameLower.includes('text') || 
+        nameLower.includes('typography') || nameLower.includes('line-height')) {
+      return 'typography';
+    }
+    if (nameLower.includes('shadow') || nameLower.includes('elevation')) {
+      return 'shadow';
+    }
+    if (nameLower.includes('border') || nameLower.includes('radius') || 
+        nameLower.includes('stroke') || nameLower.includes('outline')) {
+      return 'border';
+    }
+    
+    // Check by value patterns
+    if (valueLower.match(/#[0-9a-f]{3,8}|rgb|hsl/)) {
+      return 'color';
+    }
+    if (valueLower.match(/^\d+(\.\d+)?(px|rem|em|%|vh|vw)$/)) {
+      return 'spacing';
+    }
+    
+    return 'other';
+  }
+
+  /**
+   * Get category from CSS variable name
+   */
+  private static getCategoryFromCSSVar(varName: string): 'global' | 'semantic' | 'component' {
+    // For CSS variables, most are global design tokens
+    // Semantic tokens would typically have intent-based names
+    // Component tokens would include component names
+    
+    const nameLower = varName.toLowerCase();
+    
+    if (nameLower.includes('component') || nameLower.includes('comp-')) {
+      return 'component';
+    }
+    if (nameLower.includes('semantic') || nameLower.includes('intent') || 
+        nameLower.includes('primary') || nameLower.includes('secondary') ||
+        nameLower.includes('success') || nameLower.includes('warning') ||
+        nameLower.includes('error') || nameLower.includes('info')) {
+      return 'semantic';
+    }
+    
+    // Most CSS custom properties are global design tokens
+    return 'global';
+  }
+
+  /**
    * Parse tokens from JSON content with caching and optimized processing
    */
   static parseJSON(content: string, filePath: string): TokenInfo[] {

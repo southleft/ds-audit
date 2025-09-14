@@ -185,18 +185,46 @@ export class DashboardServer {
       try {
         const { message, context } = req.body;
         
+        // Load API key from .env file
+        let apiKey = this.config.ai?.apiKey;
+        if (!apiKey) {
+          // Try to load from .env file
+          const envPath = path.join(this.config.projectPath, '.env');
+          try {
+            const { default: dotenv } = await import('dotenv');
+            const envContent = await fs.readFile(envPath, 'utf-8');
+            const parsed = dotenv.parse(envContent);
+            apiKey = parsed.ANTHROPIC_API_KEY;
+            this.logger.info(`Loaded API key from .env: ${apiKey ? 'Found (length: ' + apiKey.length + ')' : 'Not found'}`);
+          } catch (error) {
+            this.logger.warn(`Could not load .env file for API key: ${error}`);
+          }
+        } else {
+          this.logger.info(`Using API key from config: ${apiKey ? 'Found (length: ' + apiKey.length + ')' : 'Not found'}`);
+        }
+        
         // Check if AI is configured
-        if (!this.config.ai?.enabled || !this.config.ai?.apiKey) {
+        if (!this.config.ai?.enabled || !apiKey) {
           res.status(503).json({ 
             error: 'AI service not configured',
-            response: 'AI chat requires an API key to be configured. Please ensure AI is enabled in your audit configuration.'
+            response: 'AI chat requires an API key to be configured. Please ensure you have ANTHROPIC_API_KEY set in your .env file.'
+          });
+          return;
+        }
+        
+        // Validate API key format
+        if (apiKey && !apiKey.startsWith('sk-ant-')) {
+          this.logger.warn(`Invalid API key format detected. Key starts with: ${apiKey.substring(0, 10)}`);
+          res.status(503).json({ 
+            error: 'Invalid API key format',
+            response: `The API key appears to be invalid. Anthropic API keys must start with 'sk-ant-api...'. Your key starts with '${apiKey.substring(0, 10)}...' which appears to be an OpenAI key format. Please update your .env file with a valid Anthropic API key.`
           });
           return;
         }
         
         // Create AIService instance to handle the chat
         const { AIService } = await import('../core/AIService.js');
-        const aiService = new AIService(this.config.ai.apiKey, this.config.ai.model);
+        const aiService = new AIService(apiKey, this.config.ai?.model || 'claude-sonnet-4-20250514');
         
         // Generate contextual response using Claude API
         const response = await aiService.generateChatResponse(message, context, this.results);
@@ -397,11 +425,16 @@ export class DashboardServer {
 
 
   private async openBrowser(url: string): Promise<void> {
-    const { exec } = await import('child_process');
-    const start = process.platform === 'darwin' ? 'open' : 
+    const { spawn } = await import('child_process');
+    const start = process.platform === 'darwin' ? 'open' :
                   process.platform === 'win32' ? 'start' : 'xdg-open';
-    
-    exec(`${start} ${url}`);
+
+    // Use spawn to avoid command injection - pass URL as separate argument
+    if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' });
+    } else {
+      spawn(start, [url], { detached: true, stdio: 'ignore' });
+    }
   }
 
   stop(): void {

@@ -8,8 +8,9 @@ export class AIService {
   private model: string;
 
   constructor(apiKey: string, model: string = 'claude-sonnet-4-20250514') {
-    this.client = new Anthropic({ apiKey });
     this.logger = new Logger();
+    this.logger.info(`Initializing AIService with API key: ${apiKey ? 'Configured' : 'Missing'}`);
+    this.client = new Anthropic({ apiKey });
     this.model = model;
   }
 
@@ -354,7 +355,7 @@ The detected frameworks (${fullResults.metadata.frameworksDetected.join(', ')}) 
 3. Any framework-specific performance or accessibility considerations
 4. Whether the frameworks are helping or hindering the design system's effectiveness
 
-User Question: ${message}
+User Question: ${this.sanitizeUserInput(message)}
 
 Please provide a helpful, specific response that:
 1. Directly answers their question
@@ -378,10 +379,23 @@ Keep your response concise but informative.`;
                          (response.content[0] as any)?.text || 'I apologize, but I couldn\'t generate a response.';
       
       return textContent;
-      
+
     } catch (error) {
       this.logger.error(`Chat response generation failed: ${error}`);
       throw error;
     }
+  }
+
+  private sanitizeUserInput(input: string): string {
+    // Remove potential prompt injection patterns
+    return input
+      .replace(/\n\n/g, ' ') // Remove double newlines that could break prompt structure
+      .replace(/system:/gi, '') // Remove attempts to inject system prompts
+      .replace(/user:/gi, '') // Remove attempts to inject user prompts
+      .replace(/assistant:/gi, '') // Remove attempts to inject assistant prompts
+      .replace(/\[.*?\]/g, '') // Remove square bracket commands
+      .replace(/<.*?>/g, '') // Remove XML-like tags
+      .trim()
+      .slice(0, 1000); // Limit input length to prevent token overflow
   }
 }

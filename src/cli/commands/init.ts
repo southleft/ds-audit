@@ -98,12 +98,18 @@ export async function initCommand(options: any): Promise<void> {
       await dashboard.start();
       // Open dashboard to progress page for live monitoring
       if (config.dashboard.autoOpen) {
-        const { exec } = await import('child_process');
-        const start = process.platform === 'darwin' ? 'open' : 
+        const { spawn } = await import('child_process');
+        const start = process.platform === 'darwin' ? 'open' :
                       process.platform === 'win32' ? 'start' : 'xdg-open';
         // Add delay to ensure server is ready
         setTimeout(() => {
-          exec(`${start} http://localhost:${config.dashboard.port}/#progress`);
+          const url = `http://localhost:${config.dashboard.port}/#progress`;
+          // Use spawn to avoid command injection - pass URL as separate argument
+          if (process.platform === 'win32') {
+            spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' });
+          } else {
+            spawn(start, [url], { detached: true, stdio: 'ignore' });
+          }
         }, 1000);
       }
       
@@ -330,7 +336,12 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
 
 async function saveConfiguration(config: AuditConfig): Promise<void> {
   const configPath = path.join(config.projectPath, '.dsaudit.json');
-  await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+  // Don't save the API key to the JSON config file - it should only be in .env
+  const configToSave = { ...config };
+  if (configToSave.ai) {
+    delete configToSave.ai.apiKey;
+  }
+  await fs.writeFile(configPath, JSON.stringify(configToSave, null, 2));
 }
 
 function displaySummary(results: any, logger: Logger): void {

@@ -40,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, audi
       group: 'Insights',
       items: [
         { id: 'ai-insights', label: 'AI Analysis', icon: BrainCircuit },
-        { id: 'chat', label: 'Ask Claude', icon: MessagesSquare },
+        { id: 'chat', label: 'Ask DSA', icon: MessagesSquare },
       ],
     },
     {

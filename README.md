@@ -1,25 +1,51 @@
-# dsaudit - Design System Audit CLI Tool
+# 🎨 dsaudit - Design System Audit CLI Tool
 
-A CLI-based auditing tool designed to evaluate the health, structure, and completeness of code-based design systems. It assesses everything from component quality to documentation, governance, token usage, and supporting infrastructure, producing a comprehensive AI-informed report with actionable insights.
+A comprehensive CLI-based auditing tool that evaluates the health, structure, and completeness of code-based design systems. It provides deep insights into component quality, token usage, documentation completeness, and overall system maturity with actionable recommendations for improvement.
 
-## Features
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 
-- 🔍 **Comprehensive Analysis**: Audits components, tokens, documentation, governance, tooling, performance, and accessibility
-- 📊 **Visual Reporting**: Interactive dashboard with charts and detailed metrics
-- 🤖 **AI-Powered Insights**: Optional Claude API integration for enhanced recommendations
-- 📈 **Scoring System**: Per-category grades (A-F) and overall health score
-- 🎯 **Actionable Recommendations**: Prioritized suggestions with effort estimates
-- 🚀 **Real-time Progress**: Live updates during audit execution
+## ✨ Key Features
 
-## Installation
+- 🔍 **Comprehensive Analysis**: Audits 7 critical aspects of design systems
+- 📊 **Interactive Dashboard**: Real-time visualization with Chart.js
+- 🤖 **AI-Powered Insights**: Optional Claude API integration for intelligent recommendations
+- 📈 **Smart Scoring**: Weighted category grades (A-F) with detailed metrics
+- 🎯 **Actionable Recommendations**: Priority-sorted with effort/impact analysis
+- 🚀 **Token Coverage Analysis**: Advanced detection of hardcoded values vs. design tokens
+- ♿ **Accessibility Focus**: WCAG compliance checking and recommendations
+- 📝 **Multiple Output Formats**: Markdown reports, JSON data, and HTML dashboard
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
-npm install -g dsaudit
+# Clone the repository
+git clone https://github.com/yourusername/dsaudit.git
+cd dsaudit
+
+# Install dependencies
+npm install
+
+# Build the tool
+npm run build
+
+# Link globally (optional)
+npm link
 ```
 
-Or run directly with npx:
+### Running Your First Audit
 
 ```bash
+# Navigate to your design system project
+cd /path/to/your/design-system
+
+# Run the audit
+dsaudit init
+
+# Or use npx without installing
 npx dsaudit init
 ```
 
@@ -62,9 +88,10 @@ dsaudit config --reset # Reset to defaults
 
 ### 2. Design Tokens (20% weight)
 - Token architecture (global, semantic, component-level)
-- Usage patterns (hardcoded vs. tokenized)
-- Format consistency
-- Token documentation
+- **Smart Coverage Analysis**: Calculates actual token usage vs. hardcoded values
+- Format consistency across CSS, JSON, and JS tokens
+- Token redundancy detection
+- Semantic token relationships
 
 ### 3. Documentation (15% weight)
 - Component-level documentation
@@ -145,7 +172,14 @@ This project includes Claude Code hooks for enhanced development:
 - **PostToolUse**: Runs automatic audits on modifications
 - **Notification**: Monitors system health during development
 
-## Development
+## 🛠️ Development
+
+### Prerequisites
+- Node.js >= 18.0.0
+- npm or yarn
+- TypeScript 5.0+
+
+### Setup
 
 ```bash
 # Install dependencies
@@ -154,22 +188,64 @@ npm install
 # Run in development mode
 npm run dev
 
-# Build
+# Build the project
 npm run build
 
 # Run tests
 npm test
 
-# Lint
+# Lint and type-check
 npm run lint
+npm run typecheck
 ```
 
-## Additional Resources
+### Project Structure
+
+```
+dsaudit/
+├── src/
+│   ├── cli/           # CLI commands and entry points
+│   ├── core/          # Core audit engine and scoring
+│   ├── modules/       # Individual audit modules
+│   ├── dashboard/     # Web dashboard UI
+│   └── utils/         # Shared utilities
+├── dist/              # Compiled output
+└── example-design-system/  # Example for testing
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+### Areas for Contribution
+- Additional audit modules
+- Framework-specific analyzers (React, Vue, Angular, etc.)
+- Enhanced token detection algorithms
+- Accessibility testing improvements
+- Dashboard UI enhancements
+
+## 📚 Additional Resources
 
 - [QUICKSTART.md](QUICKSTART.md) - Quick start guide for immediate setup
 - [CLAUDE.md](CLAUDE.md) - Claude AI integration details
 - [example-design-system/](example-design-system/) - Example project structure
 
-## License
+## 🐛 Known Issues
 
-MIT
+- Token coverage calculation is optimized for CSS-in-JS and CSS Modules
+- AI insights require a Claude API key
+- Dashboard requires modern browser with ES6 support
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details
+
+## 🙏 Acknowledgments
+
+- Built with TypeScript and Node.js
+- Dashboard powered by Chart.js
+- AI insights powered by Claude (Anthropic)
+
+---
+
+**Note**: This tool is in active development. Please report any issues or feature requests on the [GitHub Issues](https://github.com/yourusername/dsaudit/issues) page.

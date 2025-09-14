@@ -112,11 +112,13 @@ export class DocumentationAuditor {
   private async scanComponentDocumentation(): Promise<DocumentationInfo[]> {
     const docs: DocumentationInfo[] = [];
     
-    // Look for component documentation
+    // Look for component documentation (including Storybook stories)
     const patterns = [
       '**/components/**/*.{md,mdx}',
       '**/src/components/**/*.{md,mdx}',
       '**/*.stories.{js,jsx,ts,tsx,mdx}',
+      '**/*.story.{js,jsx,ts,tsx,mdx}',
+      '**/stories/**/*.{js,jsx,ts,tsx,mdx}',
     ];
 
     const files = await this.scanner.scanFiles(patterns);
