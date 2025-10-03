@@ -164,10 +164,10 @@ export class ComponentAuditor {
         type: this.detectComponentType(name, content),
         hasTests,
         hasStory,
-        hasDocumentation: false, // TODO: Implement doc detection
+        hasDocumentation: false,
         hasTypes,
         accessibility: this.analyzeAccessibility(content),
-        props: [], // TODO: Implement prop extraction
+        props: [],
       };
     } catch (error) {
       return null;

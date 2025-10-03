@@ -45,7 +45,9 @@ program
   .action(configCommand);
 
 program.on('command:*', () => {
+  // eslint-disable-next-line no-console
   console.error(chalk.red('Invalid command: %s'), program.args.join(' '));
+  // eslint-disable-next-line no-console
   console.log('See --help for a list of available commands.');
   process.exit(1);
 });
