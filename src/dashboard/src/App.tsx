@@ -6,17 +6,14 @@ import Overview from './components/Overview';
 import Categories from './components/Categories';
 import ActionPlan from './components/ActionPlan';
 import Recommendations from './components/Recommendations';
-import AIInsights from './components/AIInsights';
-import Chat from './components/Chat';
 import Progress from './components/Progress';
 import Export from './components/Export';
-import Timeline from './components/Timeline';
 import { AuditResult } from '@types';
 import { fetchAuditResults } from './utils/api';
 import { exportToPDF, exportCurrentView } from './utils/pdfExport';
 import './App.css';
 
-type Section = 'overview' | 'categories' | 'action-plan' | 'recommendations' | 'ai-insights' | 'chat' | 'progress' | 'export' | 'timeline';
+type Section = 'overview' | 'categories' | 'action-plan' | 'recommendations' | 'progress' | 'export';
 
 function App() {
   const [opened, { toggle }] = useDisclosure();
@@ -37,7 +34,7 @@ function App() {
     // Handle hash-based navigation
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '') as Section;
-      if (hash && ['overview', 'categories', 'action-plan', 'recommendations', 'ai-insights', 'chat', 'progress', 'export', 'timeline'].includes(hash)) {
+      if (hash && ['overview', 'categories', 'action-plan', 'recommendations', 'progress', 'export'].includes(hash)) {
         setCurrentSection(hash);
       }
     };
@@ -116,16 +113,10 @@ function App() {
         return <ActionPlan auditResult={auditResult} />;
       case 'recommendations':
         return <Recommendations auditResult={auditResult} />;
-      case 'ai-insights':
-        return <AIInsights auditResult={auditResult} />;
-      case 'chat':
-        return <Chat auditResult={auditResult} />;
       case 'progress':
         return <Progress auditResult={auditResult} />;
       case 'export':
         return <Export auditResult={auditResult} />;
-      case 'timeline':
-        return <Timeline auditResult={auditResult} />;
       default:
         return <Overview auditResult={auditResult} />;
     }

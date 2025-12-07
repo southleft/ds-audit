@@ -18,15 +18,31 @@ export class ComponentAuditor {
     const detailedPaths: any[] = [];
     const allScannedPaths = new Set<string>();
     
-    // Find component files - include monorepo patterns
+    // Find component files - expanded patterns for real-world design systems
     // We'll filter out stories, tests, and index files manually since glob negation is not reliable
     const componentPatterns = [
+      // Standard component directories
       'src/components/**/*.{tsx,jsx,ts,js}',
       'components/**/*.{tsx,jsx,ts,js}',
       'lib/components/**/*.{tsx,jsx,ts,js}',
+      'lib/**/*.{tsx,jsx}',
+      // Monorepo patterns
       'packages/*/src/components/**/*.{tsx,jsx,ts,js}',
       'packages/*/components/**/*.{tsx,jsx,ts,js}',
       'packages/*/lib/components/**/*.{tsx,jsx,ts,js}',
+      'packages/*/src/**/*.{tsx,jsx}',
+      // Storybook-based design systems (common pattern)
+      'src/stories/**/*.{tsx,jsx}',
+      'stories/**/*.{tsx,jsx}',
+      // Generic source patterns (will filter out tests/stories)
+      'src/**/*.{tsx,jsx}',
+      // UI library patterns
+      'src/ui/**/*.{tsx,jsx,ts,js}',
+      'ui/**/*.{tsx,jsx,ts,js}',
+      // Feature-based patterns
+      'src/features/**/components/**/*.{tsx,jsx}',
+      'app/components/**/*.{tsx,jsx}',
+      'app/**/components/**/*.{tsx,jsx}',
     ];
     
     // Also scan for styles
@@ -44,10 +60,14 @@ export class ComponentAuditor {
       '**/packages/*/components/**/*.{test,spec}.{ts,tsx,js,jsx}',
     ];
     
-    // Scan for stories
+    // Scan for stories - expanded patterns
     const storyPatterns = [
       '**/components/**/*.stories.{ts,tsx,js,jsx,mdx}',
       '**/packages/*/components/**/*.stories.{ts,tsx,js,jsx,mdx}',
+      'src/stories/**/*.stories.{ts,tsx,js,jsx,mdx}',
+      'stories/**/*.stories.{ts,tsx,js,jsx,mdx}',
+      'src/**/*.stories.{ts,tsx,js,jsx,mdx}',
+      '**/*.stories.{ts,tsx,js,jsx,mdx}',
     ];
 
     // Process each pattern group

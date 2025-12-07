@@ -17,7 +17,6 @@ describe('FileScanner', () => {
         components: true,
         tokens: true,
         documentation: true,
-        governance: true,
         tooling: true,
         performance: true,
         accessibility: true,

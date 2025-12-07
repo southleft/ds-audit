@@ -258,8 +258,7 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
     modules: {
       components: true,
       tokens: true,
-      documentation: true,
-      governance: true,
+      documentation: true,  // Includes governance checks
       tooling: true,
       performance: true,
       accessibility: true,
@@ -294,7 +293,6 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
           { name: 'Components', value: 'components', checked: true },
           { name: 'Design Tokens', value: 'tokens', checked: true },
           { name: 'Documentation', value: 'documentation', checked: true },
-          { name: 'Governance', value: 'governance', checked: true },
           { name: 'Tooling', value: 'tooling', checked: true },
           { name: 'Performance', value: 'performance', checked: true },
           { name: 'Accessibility', value: 'accessibility', checked: true },

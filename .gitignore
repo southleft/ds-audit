@@ -36,6 +36,10 @@ output/
 # Configuration files (user-specific)
 .dsaudit.json
 .claude/
+.claude_code_hooks.json
+
+# AI/MCP tool directories (user-specific)
+.serena/
 
 # Environment variables
 .env

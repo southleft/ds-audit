@@ -9,22 +9,49 @@ export class ScoringService {
     { grade: 'F', minScore: 0 },
   ];
 
+  // 6 categories (governance merged into documentation)
   private readonly categoryWeights: Record<string, number> = {
     components: 0.25,
     tokens: 0.20,
-    documentation: 0.15,
-    governance: 0.10,
-    tooling: 0.10,
+    documentation: 0.20,  // Increased from 0.15 (absorbed governance)
+    tooling: 0.12,        // Slight increase
     performance: 0.10,
-    accessibility: 0.10,
+    accessibility: 0.13,  // Slight increase
   };
 
-  calculateOverallScore(categoryResults: CategoryResult[]): { score: number; grade: string } {
+  /**
+   * Calculate the overall score with optional external DS adjustment
+   * @param categoryResults - Category results from auditors
+   * @param externalDSAdjustment - Optional adjustment for external design system usage
+   */
+  calculateOverallScore(
+    categoryResults: CategoryResult[],
+    externalDSAdjustment?: { componentWeight: number; tokenWeight: number; reason: string }
+  ): { score: number; grade: string } {
     let weightedSum = 0;
     let totalWeight = 0;
 
+    // Apply external DS weight adjustments if provided
+    const adjustedWeights = { ...this.categoryWeights };
+    if (externalDSAdjustment) {
+      adjustedWeights.components = externalDSAdjustment.componentWeight;
+      adjustedWeights.tokens = externalDSAdjustment.tokenWeight;
+
+      // Redistribute the weight difference to other categories
+      const originalTotal = this.categoryWeights.components + this.categoryWeights.tokens;
+      const newTotal = externalDSAdjustment.componentWeight + externalDSAdjustment.tokenWeight;
+      const difference = originalTotal - newTotal;
+
+      // Add extra weight to documentation and accessibility for external DS projects
+      if (difference > 0) {
+        adjustedWeights.documentation = (adjustedWeights.documentation || 0.15) + difference * 0.4;
+        adjustedWeights.accessibility = (adjustedWeights.accessibility || 0.10) + difference * 0.3;
+        adjustedWeights.tooling = (adjustedWeights.tooling || 0.10) + difference * 0.3;
+      }
+    }
+
     categoryResults.forEach(category => {
-      const weight = this.categoryWeights[category.id] || 0.1;
+      const weight = adjustedWeights[category.id] || 0.1;
       weightedSum += category.score * weight;
       totalWeight += weight;
     });
@@ -48,7 +75,7 @@ export class ScoringService {
       // Generate recommendations based on findings
       const criticalFindings = category.findings.filter(f => f.severity === 'critical');
       const highFindings = category.findings.filter(f => f.severity === 'high');
-      const warnings = category.findings.filter(f => f.type === 'warning');
+      const mediumFindings = category.findings.filter(f => f.severity === 'medium' || f.type === 'warning');
 
       // Critical issues become high priority recommendations
       criticalFindings.forEach(finding => {
@@ -78,10 +105,25 @@ export class ScoringService {
         });
       });
 
+      // Medium severity findings and warnings (limit to top 5 per category to avoid overwhelming)
+      const topMediumFindings = mediumFindings.slice(0, 5);
+      topMediumFindings.forEach(finding => {
+        recommendations.push({
+          id: `rec-${recommendationId++}`,
+          title: `Improve ${category.name}`,
+          description: finding.message,
+          priority: 'low',
+          effort: this.estimateEffort(finding),
+          impact: 'medium',
+          category: category.id,
+          implementation: finding.suggestion,
+        });
+      });
+
       // Category-specific recommendations based on score
-      if (category.score < 60) {
+      if (category.score < 70) {
         recommendations.push(...this.generateCategoryRecommendations(category, recommendationId));
-        recommendationId += 5; // Reserve space for category recommendations
+        recommendationId += 6; // Reserve space for category recommendations
       }
     });
 
@@ -151,8 +193,53 @@ export class ScoringService {
           });
         }
         break;
+
+      case 'tooling':
+        if (category.score < 60) {
+          recommendations.push({
+            id: `rec-${startId + 3}`,
+            title: 'Improve Build and Development Tooling',
+            description: 'Enhance build tools, testing infrastructure, and developer experience',
+            priority: 'medium',
+            effort: 'medium-lift',
+            impact: 'high',
+            category: 'tooling',
+            implementation: 'Add modern bundler (Vite), testing framework, CI/CD pipeline, and linting tools',
+          });
+        }
+        break;
+
+      case 'performance':
+        if (category.score < 60) {
+          recommendations.push({
+            id: `rec-${startId + 4}`,
+            title: 'Optimize Performance',
+            description: 'Implement performance optimizations for faster load times and better user experience',
+            priority: 'medium',
+            effort: 'medium-lift',
+            impact: 'high',
+            category: 'performance',
+            implementation: 'Add code splitting, lazy loading, optimize images, and implement bundle analysis',
+          });
+        }
+        break;
+
+      case 'accessibility':
+        if (category.score < 70) {
+          recommendations.push({
+            id: `rec-${startId + 5}`,
+            title: 'Enhance Accessibility Compliance',
+            description: 'Improve accessibility to meet WCAG standards and support all users',
+            priority: 'high',
+            effort: 'medium-lift',
+            impact: 'high',
+            category: 'accessibility',
+            implementation: 'Add ARIA labels, keyboard navigation, focus management, and screen reader support',
+          });
+        }
+        break;
     }
-    
+
     return recommendations;
   }
 

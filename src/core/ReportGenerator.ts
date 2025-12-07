@@ -36,7 +36,42 @@ export class ReportGenerator {
     let content = `# Design System Audit Report\n\n`;
     content += `Generated: ${new Date(results.timestamp).toLocaleString()}\n\n`;
     content += `## Overall Score: ${results.overallScore}/100 (${results.overallGrade})\n\n`;
-    
+
+    // External Design System Notice
+    if (results.externalDesignSystem?.detected) {
+      const eds = results.externalDesignSystem;
+      const systemNames = eds.systems.map(s => s.name).join(', ');
+
+      content += `## External Design System Detected\n\n`;
+      content += `**Systems**: ${systemNames}\n\n`;
+      content += `**Mode**: ${eds.mode === 'pure-external' ? 'Pure External (using NPM components)' : eds.mode === 'hybrid' ? 'Hybrid (external + local components)' : 'Local'}\n\n`;
+
+      if (eds.mode === 'pure-external' || eds.mode === 'hybrid') {
+        content += `> **Note**: This project uses an external design system. `;
+        content += `Scoring has been adjusted to emphasize theming, token customization, and documentation rather than local component implementation.\n\n`;
+        content += `- External components available: ~${eds.externalComponentCount}\n`;
+        content += `- Local components: ${eds.localComponentCount}\n`;
+        content += `- Scoring adjustment: Component weight ${(eds.scoringAdjustment.componentWeight * 100).toFixed(0)}%, Token weight ${(eds.scoringAdjustment.tokenWeight * 100).toFixed(0)}%\n\n`;
+      }
+
+      if (eds.themeCustomizations.length > 0) {
+        content += `### Theme Customizations\n\n`;
+        eds.themeCustomizations.forEach(tc => {
+          content += `- **${tc.file}**: ${tc.description}\n`;
+        });
+        content += `\n`;
+      }
+
+      content += `### External System Details\n\n`;
+      eds.systems.forEach(sys => {
+        content += `- **${sys.name}** (${sys.packageName}${sys.version ? `@${sys.version}` : ''})\n`;
+        content += `  - Type: ${sys.type}\n`;
+        content += `  - Theme Support: ${sys.hasThemeSupport ? 'Yes' : 'No'}\n`;
+        content += `  - Documentation: ${sys.documentation}\n`;
+      });
+      content += `\n`;
+    }
+
     // Category scores
     content += `## Category Scores\n\n`;
     results.categories.forEach(category => {

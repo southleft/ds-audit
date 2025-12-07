@@ -194,26 +194,8 @@ const ActionPlan: React.FC<ActionPlanProps> = ({ auditResult }) => {
       });
     }
 
-    // PROCESS & GOVERNANCE
+    // PROCESS & TOOLING
     const processInitiatives: StrategicInitiative[] = [];
-
-    // Governance Maturity
-    const governanceScore = auditResult.categories.find(c => c.name === 'Governance')?.score || 0;
-    if (governanceScore < 80) {
-      processInitiatives.push({
-        title: 'Design System Governance Model',
-        description: 'Establish processes for sustainable growth and community ownership',
-        impact: 'Ensures consistent evolution and prevents fragmentation',
-        recommendations: [
-          'Create a Design System Committee with clear roles',
-          'Implement RFC process for major changes',
-          'Build contribution guidelines and review processes',
-          'Establish deprecation and migration strategies'
-        ],
-        category: 'Governance',
-        type: 'process'
-      });
-    }
 
     // Tooling Excellence
     const toolingScore = auditResult.categories.find(c => c.name === 'Tooling')?.score || 0;

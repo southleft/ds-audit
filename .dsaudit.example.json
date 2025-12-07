@@ -13,7 +13,6 @@
     "components": true,
     "tokens": true,
     "documentation": true,
-    "governance": true,
     "tooling": true,
     "performance": true,
     "accessibility": true
@@ -25,7 +24,7 @@
   },
   "dashboard": {
     "enabled": true,
-    "port": 3000,
+    "port": 4321,
     "autoOpen": true
   }
 }

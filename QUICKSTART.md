@@ -21,7 +21,7 @@ dsaudit init
 
 This will:
 - Scan your design system files
-- Analyze 7 categories (components, tokens, docs, etc.)
+- Analyze 6 categories (components, tokens, docs, etc.)
 - Generate reports in `./audit/`
 - Open an interactive dashboard at http://localhost:4321
 
@@ -58,11 +58,10 @@ dsaudit init
 
 1. **Component Library (25%)**: Structure, tests, accessibility, TypeScript
 2. **Design Tokens (20%)**: Token system, usage, hardcoded values
-3. **Documentation (15%)**: README, component docs, Storybook
-4. **Governance (10%)**: Contributing guides, versioning
-5. **Tooling (10%)**: ESLint, Prettier, build tools
-6. **Performance (10%)**: Bundle size, optimization
-7. **Accessibility (10%)**: ARIA, keyboard support, semantic HTML
+3. **Documentation (20%)**: README, component docs, governance, Storybook
+4. **Tooling (12%)**: ESLint, Prettier, build tools, CI/CD
+5. **Performance (10%)**: Bundle size, optimization
+6. **Accessibility (13%)**: ARIA, keyboard support, semantic HTML
 
 ### Output Files
 
@@ -80,7 +79,6 @@ Category Scores:
   Component Library: 85/100 (B)
   Design Tokens: 70/100 (C)
   Documentation: 60/100 (D)
-  Governance: 80/100 (B)
   Tooling: 90/100 (A)
   Performance: 75/100 (C)
   Accessibility: 65/100 (D)

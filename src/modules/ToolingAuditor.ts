@@ -184,6 +184,29 @@ export class ToolingAuditor {
       });
     }
 
+    // Add improvement suggestions if score is not maxed out
+    if (score.value < 25) {
+      const missing: string[] = [];
+      if (!packageInfo.hasVite && !packageInfo.hasWebpack && !packageInfo.hasRollup && !packageInfo.hasEsbuild) {
+        missing.push('modern bundler (Vite, esbuild, or Webpack)');
+      }
+      if (!packageInfo.hasPostCSS) {
+        missing.push('PostCSS for CSS processing');
+      }
+      if (packageInfo.type !== 'module') {
+        missing.push('ESM modules (set "type": "module" in package.json)');
+      }
+      if (missing.length > 0) {
+        findings.push({
+          id: 'build-improvements',
+          type: 'warning',
+          message: `Build Tools: Missing ${missing.join(', ')}`,
+          severity: 'medium',
+          suggestion: `Add these tools to improve your build setup and score (currently ${score.value}/25)`
+        });
+      }
+    }
+
     return {
       score: Math.min(25, score.value),
       findings,
@@ -273,6 +296,29 @@ export class ToolingAuditor {
     if (packageInfo.hasRedux || packageInfo.hasZustand || packageInfo.hasMobX || packageInfo.hasRecoil || packageInfo.hasPinia) {
       score.value += 2;
       tools.push('State Management');
+    }
+
+    // Add improvement suggestions if score is not maxed out
+    if (score.value < 25) {
+      const missing: string[] = [];
+      if (!projectInfo.hasTypeScript && (!configFiles || configFiles.typescript?.length === 0)) {
+        missing.push('TypeScript for type safety (+5 pts)');
+      }
+      if (!packageInfo.hasReact && !packageInfo.hasVue && !packageInfo.hasSvelte && !packageInfo.hasAngular && !packageInfo.hasLit) {
+        missing.push('modern component framework');
+      }
+      if (!packageInfo.hasRedux && !packageInfo.hasZustand && !packageInfo.hasMobX && !packageInfo.hasRecoil && !packageInfo.hasPinia) {
+        missing.push('state management solution (+2 pts)');
+      }
+      if (missing.length > 0) {
+        findings.push({
+          id: 'framework-improvements',
+          type: 'warning',
+          message: `Framework & Runtime: Consider adding ${missing.join(', ')}`,
+          severity: 'medium',
+          suggestion: `These additions would improve your score (currently ${score.value}/25)`
+        });
+      }
     }
 
     return {
@@ -365,6 +411,32 @@ export class ToolingAuditor {
         severity: 'high',
         suggestion: 'Add testing with Jest, Vitest, or similar framework'
       });
+    }
+
+    // Add improvement suggestions if score is not maxed out
+    if (score.value < 25 && score.value > 0) {
+      const missing: string[] = [];
+      if (!packageInfo.hasCypress && !packageInfo.hasPlaywright) {
+        missing.push('E2E testing (Cypress or Playwright) (+5 pts)');
+      }
+      if (!projectInfo.hasStorybook && (!configFiles || configFiles.storybook?.length === 0)) {
+        missing.push('Storybook for component testing (+5 pts)');
+      }
+      if (!packageInfo.hasTestingLibrary) {
+        missing.push('Testing Library for component testing (+3 pts)');
+      }
+      if (!packageInfo.hasNyc && !packageInfo.hasC8) {
+        missing.push('code coverage tools (+2 pts)');
+      }
+      if (missing.length > 0) {
+        findings.push({
+          id: 'testing-improvements',
+          type: 'warning',
+          message: `Testing Setup: Consider adding ${missing.join(', ')}`,
+          severity: 'medium',
+          suggestion: `These additions would improve your score (currently ${score.value}/25)`
+        });
+      }
     }
 
     return {
@@ -474,6 +546,35 @@ export class ToolingAuditor {
         message: 'Environment example file provided',
         severity: 'low'
       });
+    }
+
+    // Add improvement suggestions if score is not maxed out
+    if (score.value < 25) {
+      const missing: string[] = [];
+      if (!hasGitHubActions && !hasGitLabCI && !hasCircleCI) {
+        missing.push('CI/CD pipeline (GitHub Actions, GitLab CI, or CircleCI) (+5 pts)');
+      }
+      if (!configFiles.eslint?.length && !packageInfo.hasESLint) {
+        missing.push('ESLint for code quality (+3 pts)');
+      }
+      if (!configFiles.prettier?.length && !packageInfo.hasPrettier) {
+        missing.push('Prettier for code formatting (+2 pts)');
+      }
+      if (!packageInfo.hasHusky) {
+        missing.push('Husky for git hooks (+3 pts)');
+      }
+      if (!hasReadme) {
+        missing.push('README.md documentation (+3 pts)');
+      }
+      if (missing.length > 0) {
+        findings.push({
+          id: 'cidx-improvements',
+          type: 'warning',
+          message: `CI/DX: Consider adding ${missing.join(', ')}`,
+          severity: 'medium',
+          suggestion: `These additions would improve your score (currently ${score.value}/25)`
+        });
+      }
     }
 
     return {

@@ -32,9 +32,11 @@ program
 program
   .command('run')
   .description('Run audit with existing configuration')
-  .option('-p, --path <path>', 'Path to design system directory', process.cwd())
-  .option('-o, --output <path>', 'Output directory for reports', './audit')
-  .option('--format <type>', 'Output format (json|markdown|html|all)', 'all')
+  .option('-c, --config <path>', 'Path to config file', '.dsaudit.json')
+  .option('-o, --output <dir>', 'Output directory for reports')
+  .option('--format <formats>', 'Output formats: json,md,html', 'json,md')
+  .option('--dashboard', 'Start dashboard after audit')
+  .option('--quiet', 'Minimal output')
   .action(runCommand);
 
 program

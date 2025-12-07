@@ -10,6 +10,8 @@ export interface ProgressUpdate {
   error?: string;
 }
 
+const TOTAL_CATEGORIES = 6; // Known number of audit categories (governance merged into documentation)
+
 export function useProgress() {
   const [isConnected, setIsConnected] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -20,6 +22,7 @@ export function useProgress() {
   const [lastAuditTime, setLastAuditTime] = useState<number>(0);
   const [isAuditActive, setIsAuditActive] = useState(false);
   const auditActiveRef = useRef(false);
+  const completedCountRef = useRef(0);
 
   const connect = useCallback(() => {
     const eventSource = new EventSource('/api/progress');
@@ -40,6 +43,7 @@ export function useProgress() {
             
           case 'audit:start':
             console.log('[Progress] Received audit:start event');
+            completedCountRef.current = 0;
             setProgress(0);
             setIsComplete(false);
             setIsAuditActive(true);
@@ -48,32 +52,45 @@ export function useProgress() {
             setMessage(data.message || 'Starting audit...');
             setLastAuditTime(Date.now());
             break;
-            
+
           case 'category:start':
+            console.log('[Progress] Category starting:', data.category, 'Progress from server:', data.progress);
             setCurrentCategory(data.category || null);
-            setProgress(data.progress || 0);
+            // Calculate progress based on completed count - more reliable than server-sent value
+            const startProgress = Math.round((completedCountRef.current / TOTAL_CATEGORIES) * 100);
+            console.log('[Progress] Calculated start progress:', startProgress);
+            setProgress(startProgress);
             setMessage(data.message || '');
             break;
-            
+
           case 'category:complete':
+            completedCountRef.current++;
+            console.log('[Progress] Category complete:', data.category, 'Completed count:', completedCountRef.current);
             if (data.category && data.result) {
               setCategoryResults(prev => ({
                 ...prev,
                 [data.category!]: data.result
               }));
             }
-            setProgress(data.progress || 0);
+            // Calculate progress based on completed count
+            const completeProgress = Math.round((completedCountRef.current / TOTAL_CATEGORIES) * 100);
+            console.log('[Progress] Calculated complete progress:', completeProgress);
+            setProgress(completeProgress);
             setMessage(data.message || '');
             break;
             
           case 'category:error':
+            completedCountRef.current++;
+            console.log('[Progress] Category error:', data.category, 'Completed count:', completedCountRef.current);
             if (data.category) {
               setCategoryResults(prev => ({
                 ...prev,
                 [data.category!]: { error: data.error }
               }));
             }
-            setProgress(data.progress || 0);
+            // Calculate progress based on completed count
+            const errorProgress = Math.round((completedCountRef.current / TOTAL_CATEGORIES) * 100);
+            setProgress(errorProgress);
             break;
             
           case 'audit:complete':

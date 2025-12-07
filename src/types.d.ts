@@ -63,8 +63,7 @@ declare module '@types' {
     modules: {
       components: boolean;
       tokens: boolean;
-      documentation: boolean;
-      governance: boolean;
+      documentation: boolean;  // Includes governance checks
       tooling: boolean;
       performance: boolean;
       accessibility: boolean;

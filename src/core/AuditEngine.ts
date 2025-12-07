@@ -1,15 +1,16 @@
 import { EventEmitter } from 'events';
-import type { AuditConfig, AuditResult, CategoryResult } from '../types/index.js';
+import type { AuditConfig, AuditResult, CategoryResult, ExternalDesignSystemInfo } from '../types/index.js';
 import { ComponentAuditor } from '../modules/ComponentAuditor.js';
 import { TokenAuditor } from '../modules/TokenAuditor.js';
 import { DocumentationAuditor } from '../modules/DocumentationAuditor.js';
-import { GovernanceAuditor } from '../modules/GovernanceAuditor.js';
+// GovernanceAuditor merged into DocumentationAuditor
 import { ToolingAuditor } from '../modules/ToolingAuditor.js';
 import { PerformanceAuditor } from '../modules/PerformanceAuditor.js';
 import { AccessibilityAuditor } from '../modules/AccessibilityAuditor.js';
 import { ScoringService } from './ScoringService.js';
 import { AIService } from './AIService.js';
 import { Logger } from '../utils/Logger.js';
+import { ExternalDSDetector } from '../utils/ExternalDSDetector.js';
 
 export class AuditEngine extends EventEmitter {
   private config: AuditConfig;
@@ -42,11 +43,10 @@ export class AuditEngine extends EventEmitter {
       this.auditors.set('tokens', new TokenAuditor(this.config));
     }
     if (modules.documentation) {
+      // Documentation now includes governance checks
       this.auditors.set('documentation', new DocumentationAuditor(this.config));
     }
-    if (modules.governance) {
-      this.auditors.set('governance', new GovernanceAuditor(this.config));
-    }
+    // GovernanceAuditor removed - merged into DocumentationAuditor
     if (modules.tooling) {
       this.auditors.set('tooling', new ToolingAuditor(this.config));
     }
@@ -84,8 +84,23 @@ export class AuditEngine extends EventEmitter {
       }
     }
 
-    // Calculate overall score
-    const { score, grade } = this.scoringService.calculateOverallScore(categoryResults);
+    // Detect external design systems
+    const externalDSDetector = new ExternalDSDetector(this.config.projectPath);
+    const componentResult = categoryResults.find(c => c.id === 'components');
+    const localComponentCount = (componentResult?.metrics?.totalComponents as number) || 0;
+    const externalDSAnalysis = await externalDSDetector.analyze(localComponentCount);
+
+    // Log external DS detection
+    if (externalDSAnalysis.detected) {
+      const systemNames = externalDSAnalysis.systems.map(s => s.name).join(', ');
+      this.logger.info(`External design system detected: ${systemNames} (${externalDSAnalysis.mode} mode)`);
+    }
+
+    // Calculate overall score with external DS awareness
+    const { score, grade } = this.scoringService.calculateOverallScore(
+      categoryResults,
+      externalDSAnalysis.detected ? externalDSAnalysis.scoringAdjustment : undefined
+    );
 
     // Generate AI-powered recommendations if enabled
     let recommendations = this.scoringService.generateRecommendations(categoryResults);
@@ -118,6 +133,19 @@ export class AuditEngine extends EventEmitter {
       }
     }
     
+    // Build external design system info if detected
+    const externalDesignSystem: ExternalDesignSystemInfo | undefined = externalDSAnalysis.detected
+      ? {
+          detected: true,
+          systems: externalDSAnalysis.systems,
+          mode: externalDSAnalysis.mode,
+          localComponentCount: externalDSAnalysis.localComponentCount,
+          externalComponentCount: externalDSAnalysis.externalComponentCount,
+          themeCustomizations: externalDSAnalysis.themeCustomizations,
+          scoringAdjustment: externalDSAnalysis.scoringAdjustment,
+        }
+      : undefined;
+
     const result: AuditResult = {
       timestamp: new Date().toISOString(),
       projectPath: this.config.projectPath,
@@ -132,6 +160,7 @@ export class AuditEngine extends EventEmitter {
         frameworksDetected: this.getDetectedFrameworks(categoryResults),
         errors,
       },
+      externalDesignSystem,
       aiInsights,
     };
 

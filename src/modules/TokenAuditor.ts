@@ -487,12 +487,30 @@ export class TokenAuditor {
     }
 
     if (tokens.length > 20) {
+      // Categorize the tokens for the success message
+      const tokenTypes = this.categorizeTokens(tokens);
+      const typeBreakdown = Object.entries(tokenTypes)
+        .filter(([_, count]) => count > 0)
+        .map(([type, count]) => `${count} ${type}`)
+        .join(', ');
+
       findings.push({
         id: 'token-well-defined',
         type: 'success',
-        message: `Well-defined token system with ${tokens.length} tokens`,
+        message: `Well-defined token system with ${tokens.length} tokens (${typeBreakdown})`,
         severity: 'low',
       });
+
+      // Add context about multi-theme/mode token systems
+      if (tokens.length > 200) {
+        findings.push({
+          id: 'token-multi-theme-detected',
+          type: 'info',
+          message: `Large token system detected (${tokens.length} tokens). This is typical for design systems with multiple themes or modes.`,
+          severity: 'low',
+          suggestion: 'Multi-theme token systems are expected to have many tokens. Focus on ensuring consistent usage rather than reducing token count. Unused tokens may be intentionally defined for theme variations.',
+        });
+      }
     }
   }
 
@@ -550,27 +568,49 @@ export class TokenAuditor {
   private addCoverageFindings(coverageReport: TokenCoverageReport, findings: Finding[]): void {
     const { coverageMetrics, hardcodedValues, redundancies, componentUsage } = coverageReport;
 
-    // Add finding for unused tokens
+    // Add finding for unused tokens with actionable guidance
     if (coverageMetrics.unusedTokens.length > 0) {
       const unusedPercentage = (coverageMetrics.unusedTokens.length / coverageMetrics.totalTokens) * 100;
+      const usedCount = coverageMetrics.totalTokens - coverageMetrics.unusedTokens.length;
+      const usedPercentage = (100 - unusedPercentage).toFixed(1);
+
+      // Provide more context on what this means
+      let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
+      let suggestion = '';
+
+      if (unusedPercentage > 70) {
+        severity = 'high';
+        suggestion = `Most tokens are unused. This often indicates: (1) tokens defined for multiple themes but components only reference one, (2) generated tokens from a design tool that weren't adopted, or (3) a disconnect between token definitions and component styles. Review your CSS/SCSS files to ensure they use var(--token-name) instead of hardcoded values.`;
+      } else if (unusedPercentage > 50) {
+        severity = 'medium';
+        suggestion = `Over half of tokens are unused. Check if components are using hardcoded values (like "#fff" or "16px") instead of token references (like "var(--color-white)" or "var(--spacing-4)"). Run a search for hardcoded hex colors and pixel values in your component styles.`;
+      } else {
+        suggestion = `Some tokens are unused. This may be acceptable for theme variations or future-proofing. Consider auditing tokens marked as unused to confirm they are intentionally reserved.`;
+      }
+
       findings.push({
         id: 'token-unused-tokens',
         type: unusedPercentage > 50 ? 'warning' : 'info',
-        message: `${coverageMetrics.unusedTokens.length} tokens (${unusedPercentage.toFixed(1)}%) are defined but never used`,
-        severity: unusedPercentage > 50 ? 'medium' : 'low',
-        suggestion: 'Consider removing unused tokens or ensure they are properly referenced in your codebase',
+        message: `Token usage: ${usedCount}/${coverageMetrics.totalTokens} tokens are being used (${usedPercentage}% coverage). ${coverageMetrics.unusedTokens.length} tokens (${unusedPercentage.toFixed(1)}%) are defined but never referenced.`,
+        severity,
+        suggestion,
       });
     }
 
-    // Add finding for hardcoded values that match tokens
+    // Add finding for hardcoded values that match tokens with specific examples
     const hardcodedWithMatches = hardcodedValues.filter(hv => hv.matchedToken);
     if (hardcodedWithMatches.length > 0) {
+      // Get top examples to show
+      const examples = hardcodedWithMatches.slice(0, 3).map(hv =>
+        `${hv.value} → use ${hv.matchedToken}`
+      ).join('; ');
+
       findings.push({
         id: 'token-hardcoded-matches',
         type: 'warning',
         message: `Found ${hardcodedWithMatches.length} hardcoded values that closely match existing tokens`,
         severity: 'high',
-        suggestion: 'Replace these hardcoded values with their corresponding token references',
+        suggestion: `Replace hardcoded values with token references. Examples: ${examples}. Search for hex colors (#xxx) and pixel values (Npx) in your stylesheets and replace with var(--token-name).`,
       });
     }
 
@@ -579,21 +619,28 @@ export class TokenAuditor {
       findings.push({
         id: 'token-redundancies',
         type: 'info',
-        message: `Found ${redundancies.length} sets of potentially redundant tokens`,
+        message: `Found ${redundancies.length} sets of potentially redundant tokens with similar values`,
         severity: 'low',
-        suggestion: 'Consider consolidating similar tokens to simplify your token system',
+        suggestion: 'Consider consolidating similar tokens to simplify your token system. Redundant tokens increase maintenance burden and can lead to inconsistencies.',
       });
     }
 
-    // Add finding for low coverage components
+    // Add finding for low coverage components with specific names
     const lowCoverageComponents = componentUsage.filter(cu => cu.coverageScore < 50);
     if (lowCoverageComponents.length > 0) {
+      // Get top 5 worst components
+      const worstComponents = lowCoverageComponents
+        .sort((a, b) => a.coverageScore - b.coverageScore)
+        .slice(0, 5)
+        .map(c => `${c.componentName} (${c.coverageScore.toFixed(0)}%)`)
+        .join(', ');
+
       findings.push({
         id: 'token-low-component-coverage',
         type: 'warning',
         message: `${lowCoverageComponents.length} components have low token usage (< 50% coverage)`,
         severity: 'medium',
-        suggestion: 'Review these components and replace hardcoded values with design tokens',
+        suggestion: `These components use too many hardcoded values: ${worstComponents}. Replace hardcoded colors, spacing, and typography with design token references.`,
       });
     }
 
@@ -604,6 +651,28 @@ export class TokenAuditor {
         type: 'success',
         message: `Excellent token coverage: ${coverageMetrics.coveragePercentage.toFixed(1)}% of tokens are being used`,
         severity: 'low',
+      });
+    }
+
+    // Add score breakdown finding for transparency
+    const scoreImpact: string[] = [];
+    if (coverageMetrics.coveragePercentage < 50) {
+      scoreImpact.push(`Low coverage (${coverageMetrics.coveragePercentage.toFixed(1)}%): -10 points`);
+    }
+    if (hardcodedWithMatches.length > 10) {
+      scoreImpact.push(`Many hardcoded values (${hardcodedWithMatches.length}): -10 points`);
+    }
+    if (lowCoverageComponents.length > 10) {
+      scoreImpact.push(`${lowCoverageComponents.length} low-coverage components: -5 points`);
+    }
+
+    if (scoreImpact.length > 0) {
+      findings.push({
+        id: 'token-score-breakdown',
+        type: 'info',
+        message: `Score impact factors: ${scoreImpact.join(', ')}`,
+        severity: 'low',
+        suggestion: 'To improve your token score: (1) Replace hardcoded values with token references, (2) Remove unused tokens or use them in components, (3) Ensure component styles use CSS variables instead of literal values.',
       });
     }
   }

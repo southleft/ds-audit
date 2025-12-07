@@ -74,6 +74,10 @@ export class DashboardServer {
   private logger: Logger;
   private server: any;
   public progressClients: Set<express.Response> = new Set();
+  // Event buffer for replaying missed events to late-connecting clients
+  private eventBuffer: Array<{ data: any; timestamp: number }> = [];
+  private readonly MAX_BUFFER_SIZE = 50;
+  private readonly EVENT_EXPIRY_MS = 60000; // 1 minute
 
   constructor(config: AuditConfig, results: AuditResult) {
     this.config = config;
@@ -155,14 +159,28 @@ export class DashboardServer {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      
+
       // Send initial connection message
       res.write('data: {"type": "connected"}\n\n');
-      
+
       // Add client to the set
       this.progressClients.add(res);
       this.logger.info(`Client connected. Total clients: ${this.progressClients.size}`);
-      
+
+      // Replay buffered events to catch up late-connecting clients
+      const now = Date.now();
+      const validEvents = this.eventBuffer.filter(e => now - e.timestamp < this.EVENT_EXPIRY_MS);
+      if (validEvents.length > 0) {
+        this.logger.info(`Replaying ${validEvents.length} buffered events to new client`);
+        validEvents.forEach(event => {
+          try {
+            res.write(`data: ${JSON.stringify(event.data)}\n\n`);
+          } catch (error) {
+            // Ignore write errors during replay
+          }
+        });
+      }
+
       // Send heartbeat to keep connection alive
       const heartbeat = setInterval(() => {
         try {
@@ -171,7 +189,7 @@ export class DashboardServer {
           clearInterval(heartbeat);
         }
       }, 30000);
-      
+
       // Remove client on disconnect
       req.on('close', () => {
         clearInterval(heartbeat);
@@ -451,6 +469,20 @@ export class DashboardServer {
   // Method to send progress updates to all connected clients
   sendProgressUpdate(data: any): void {
     this.logger.info(`Sending progress update: ${data.type} to ${this.progressClients.size} clients`);
+
+    // Buffer the event for late-connecting clients
+    this.eventBuffer.push({ data, timestamp: Date.now() });
+
+    // Trim buffer if too large (keep most recent events)
+    if (this.eventBuffer.length > this.MAX_BUFFER_SIZE) {
+      this.eventBuffer = this.eventBuffer.slice(-this.MAX_BUFFER_SIZE);
+    }
+
+    // Clear buffer when audit completes (or starts fresh)
+    if (data.type === 'audit:start') {
+      this.eventBuffer = [{ data, timestamp: Date.now() }];
+    }
+
     const message = `data: ${JSON.stringify(data)}\n\n`;
     this.progressClients.forEach(client => {
       try {

@@ -6,8 +6,8 @@ export interface AuditConfig {
   modules: {
     components: boolean;
     tokens: boolean;
-    documentation: boolean;
-    governance: boolean;
+    documentation: boolean;  // Now includes governance checks
+    // governance removed - merged into documentation
     tooling: boolean;
     performance: boolean;
     accessibility: boolean;
@@ -24,6 +24,31 @@ export interface AuditConfig {
   };
 }
 
+export interface ExternalDesignSystemInfo {
+  detected: boolean;
+  systems: Array<{
+    name: string;
+    packageName: string;
+    version?: string;
+    type: 'component-library' | 'utility' | 'css-framework';
+    hasThemeSupport: boolean;
+    documentation: string;
+  }>;
+  mode: 'pure-local' | 'hybrid' | 'pure-external';
+  localComponentCount: number;
+  externalComponentCount: number;
+  themeCustomizations: Array<{
+    type: string;
+    file: string;
+    description: string;
+  }>;
+  scoringAdjustment: {
+    componentWeight: number;
+    tokenWeight: number;
+    reason: string;
+  };
+}
+
 export interface AuditResult {
   timestamp: string;
   projectPath: string;
@@ -32,6 +57,7 @@ export interface AuditResult {
   categories: CategoryResult[];
   recommendations: Recommendation[];
   metadata: AuditMetadata;
+  externalDesignSystem?: ExternalDesignSystemInfo;
   aiInsights?: {
     summary: string;
     strengths: string[];

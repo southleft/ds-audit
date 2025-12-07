@@ -50,17 +50,50 @@ export class TokenParser {
 
   // Keys that indicate metadata rather than actual tokens
   private static readonly METADATA_KEYS = new Set([
+    // Figma-specific metadata
     '$figmavariablereferences',
     '$figmacollectionid',
     '$figmavariableid',
     'figma',
+    // General metadata patterns
     'meta',
     'metadata',
     '_meta',
+    '_source',
+    '_description',
+    '_note',
+    '_version',
+    // Token spec reserved keys
     '$extensions',
     '$type',
-    '$description'
+    '$description',
+    '$value',
+    // Documentation keys (not actual tokens)
+    'description',
+    'usage',
+    'example',
+    'examples',
+    'note',
+    'notes',
+    'recommendations',
+    'documentation',
+    'docs',
+    'comment',
+    'comments',
+    // Config/source info
+    'source',
+    'sources',
+    'reference',
+    'references',
   ]);
+
+  // Patterns that indicate a value is documentation, not a token
+  private static readonly DOCUMENTATION_PATTERNS = [
+    /^https?:\/\//,           // URLs
+    /^[A-Z][a-z].*\.$/, // Full sentences ending with period
+    /^\d+\.\d+\.\d+$/,        // Version strings
+    /^(Use|Set|The|This|For|If|When|How|Why|What|See|Example|Note|Description|Usage)/i, // Documentation-like text
+  ];
 
   // Performance optimization: Pre-computed Sets for faster keyword lookup
   private static readonly colorKeywords = new Set([
@@ -282,19 +315,23 @@ export class TokenParser {
             stack.push({ obj: value, prefix: currentPath, depth: depth + 1 });
           }
         } else if (typeof value === 'string' || typeof value === 'number') {
-          // Direct value token
+          // Direct value token - but skip documentation-like values
+          if (typeof value === 'string' && this.isDocumentationValue(value)) {
+            continue;
+          }
+
           const token: ParsedToken = {
             name: currentPath,
             value: value,
             type: this.inferTokenTypeOptimized(key, value)
           };
-          
+
           const aliasTarget = this.detectAliasOptimized(value);
           if (aliasTarget) {
             aliases.set(currentPath, aliasTarget);
             token.aliasOf = aliasTarget;
           }
-          
+
           tokens.set(currentPath, token);
         }
       }
@@ -304,9 +341,20 @@ export class TokenParser {
   }
 
   private static isTokenObject(value: any): boolean {
-    return typeof value === 'object' && 
-           value !== null && 
+    return typeof value === 'object' &&
+           value !== null &&
            ('value' in value || '$value' in value);
+  }
+
+  /**
+   * Check if a value looks like documentation rather than a token value
+   */
+  private static isDocumentationValue(value: string): boolean {
+    // Skip very long strings (likely documentation)
+    if (value.length > 100) return true;
+
+    // Check against documentation patterns
+    return this.DOCUMENTATION_PATTERNS.some(pattern => pattern.test(value));
   }
 
   private static looksLikeSimpleToken(value: any): boolean {

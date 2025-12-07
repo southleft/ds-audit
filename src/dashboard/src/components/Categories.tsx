@@ -130,7 +130,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
         key: 'findingType',
         label: 'Type',
         sortable: true,
-        width: '12%',
+        width: '10%',
         render: (value: string, row: any) => (
           <Badge color={getSeverityColor(row.severity)} size="sm">
             {value}
@@ -141,7 +141,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
         key: 'component',
         label: 'Component',
         sortable: true,
-        width: '15%',
+        width: '12%',
         render: (value: string) => (
           <Text fw={500} size="sm">{value || 'General'}</Text>
         )
@@ -150,7 +150,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
         key: 'message',
         label: 'Description',
         sortable: true,
-        width: '35%',
+        width: '32%',
         render: (value: string) => (
           <Text size="sm" style={{ lineHeight: 1.4 }}>
             {value.length > 100 ? `${value.substring(0, 100)}...` : value}
@@ -160,7 +160,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
       {
         key: 'actionableAdvice',
         label: 'How to Fix',
-        width: '25%',
+        width: '22%',
         render: (value: string) => (
           <Text size="xs" c="dimmed" style={{ lineHeight: 1.3 }}>
             {value}
@@ -169,7 +169,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
       },
       {
         key: 'estimatedEffort',
-        label: 'Est. Effort',
+        label: 'Effort',
         sortable: true,
         width: '8%',
         render: (value: string) => (
@@ -180,9 +180,10 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult }) => {
         key: 'severity',
         label: 'Priority',
         sortable: true,
-        width: '5%',
+        width: '10%',
+        minWidth: '80px',
         render: (value: string) => (
-          <Badge color={getSeverityColor(value)} size="xs" variant="dot">
+          <Badge color={getSeverityColor(value)} size="sm" variant="dot">
             {value}
           </Badge>
         )
@@ -583,13 +584,8 @@ function renderTokenCoverage(coverage: any) {
     return acc;
   }, {});
 
-  // Calculate detection method breakdown (mock data since we don't have actual detection methods)
-  const detectionMethods = {
-    cssClasses: Math.floor(safeeCoverage.usedTokens * 0.4),
-    apiReferences: Math.floor(safeeCoverage.usedTokens * 0.3),
-    componentProps: Math.floor(safeeCoverage.usedTokens * 0.2),
-    cssVariables: Math.floor(safeeCoverage.usedTokens * 0.1)
-  };
+  // Detection method breakdown - real data from coverage if available
+  const detectionMethods = safeeCoverage.detectionMethods || null;
 
   const getCategoryIcon = (category: string) => {
     const icons = {
@@ -792,41 +788,47 @@ function renderTokenCoverage(coverage: any) {
               <Text size="sm" c="dimmed" mb="lg">
                 How tokens are being detected and used across different integration patterns
               </Text>
-              
-              <Grid>
-                <Grid.Col span={3}>
-                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Code size={32} color="var(--accent-primary)" style={{ margin: '0 auto 0.5rem' }} />
-                    <Text fw={600}>CSS Classes</Text>
-                    <Text size="xl" fw={700} c="blue">{detectionMethods.cssClasses}</Text>
-                    <Text size="xs" c="dimmed">className usage</Text>
-                  </Card>
-                </Grid.Col>
-                <Grid.Col span={3}>
-                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Activity size={32} color="var(--success)" style={{ margin: '0 auto 0.5rem' }} />
-                    <Text fw={600}>API References</Text>
-                    <Text size="xl" fw={700} c="green">{detectionMethods.apiReferences}</Text>
-                    <Text size="xs" c="dimmed">theme.colors.primary</Text>
-                  </Card>
-                </Grid.Col>
-                <Grid.Col span={3}>
-                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Layers size={32} color="var(--warning)" style={{ margin: '0 auto 0.5rem' }} />
-                    <Text fw={600}>Component Props</Text>
-                    <Text size="xl" fw={700} c="orange">{detectionMethods.componentProps}</Text>
-                    <Text size="xs" c="dimmed">prop values</Text>
-                  </Card>
-                </Grid.Col>
-                <Grid.Col span={3}>
-                  <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
-                    <Target size={32} color="var(--accent-secondary)" style={{ margin: '0 auto 0.5rem' }} />
-                    <Text fw={600}>CSS Variables</Text>
-                    <Text size="xl" fw={700} c="purple">{detectionMethods.cssVariables}</Text>
-                    <Text size="xs" c="dimmed">var(--token)</Text>
-                  </Card>
-                </Grid.Col>
-              </Grid>
+
+              {detectionMethods ? (
+                <Grid>
+                  <Grid.Col span={3}>
+                    <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                      <Code size={32} color="var(--accent-primary)" style={{ margin: '0 auto 0.5rem' }} />
+                      <Text fw={600}>CSS Classes</Text>
+                      <Text size="xl" fw={700} c="blue">{detectionMethods.cssClasses || 0}</Text>
+                      <Text size="xs" c="dimmed">className usage</Text>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={3}>
+                    <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                      <Activity size={32} color="var(--success)" style={{ margin: '0 auto 0.5rem' }} />
+                      <Text fw={600}>API References</Text>
+                      <Text size="xl" fw={700} c="green">{detectionMethods.apiReferences || 0}</Text>
+                      <Text size="xs" c="dimmed">theme.colors.primary</Text>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={3}>
+                    <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                      <Layers size={32} color="var(--warning)" style={{ margin: '0 auto 0.5rem' }} />
+                      <Text fw={600}>Component Props</Text>
+                      <Text size="xl" fw={700} c="orange">{detectionMethods.componentProps || 0}</Text>
+                      <Text size="xs" c="dimmed">prop values</Text>
+                    </Card>
+                  </Grid.Col>
+                  <Grid.Col span={3}>
+                    <Card withBorder p="md" className="detection-method-card" style={{ textAlign: 'center' }}>
+                      <Target size={32} color="var(--accent-secondary)" style={{ margin: '0 auto 0.5rem' }} />
+                      <Text fw={600}>CSS Variables</Text>
+                      <Text size="xl" fw={700} c="purple">{detectionMethods.cssVariables || 0}</Text>
+                      <Text size="xs" c="dimmed">var(--token)</Text>
+                    </Card>
+                  </Grid.Col>
+                </Grid>
+              ) : (
+                <Alert color="blue" variant="light">
+                  <Text>Detection method breakdown data is not available in this audit.</Text>
+                </Alert>
+              )}
             </Grid.Col>
           </Grid>
         )}
@@ -1064,60 +1066,42 @@ function renderTokenCoverage(coverage: any) {
 
 // Render usage trends
 function renderUsageTrends(coverage: any) {
-  // Generate mock usage trends data since we don't have actual historical data
-  const generateMockTrends = () => {
-    const categories = ['color', 'spacing', 'typography', 'border', 'shadow'];
-    return categories.map(category => {
-      const categoryData = coverage.byCategory?.[category];
-      const baseUsage = categoryData?.used || Math.floor(Math.random() * 20) + 5;
-      
-      return {
-        category,
-        currentUsage: baseUsage,
-        trend: Math.random() > 0.5 ? 'up' : 'down',
-        change: Math.floor(Math.random() * 20) + 1,
-        mostUsedToken: categoryData?.mostUsed?.[0]?.name || `${category}-primary`,
-        adoption: categoryData?.percentage || Math.floor(Math.random() * 60) + 20
-      };
-    });
-  };
-
-  const trends = generateMockTrends();
   const totalTokensUsed = coverage.usedTokens || 0;
   const totalComponents = coverage.componentCoverage?.length || 0;
+
+  // Build trends from actual category data
+  const trends = coverage.byCategory ? Object.entries(coverage.byCategory).map(([category, data]: [string, any]) => ({
+    category,
+    currentUsage: data.used || 0,
+    mostUsedToken: data.mostUsed?.[0]?.name || 'N/A',
+    adoption: data.percentage || 0
+  })) : [];
 
   return (
     <Stack gap="lg">
       {/* Summary Stats */}
       <Grid>
-        <Grid.Col span={3}>
+        <Grid.Col span={4}>
           <Card withBorder p="md" className="trend-stat-card" style={{ textAlign: 'center' }}>
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Total Usage</Text>
             <Text size="xl" fw={700} c="blue">{totalTokensUsed}</Text>
-            <Text size="xs" c="green">↗ +12% vs baseline</Text>
+            <Text size="xs" c="dimmed">Tokens in use</Text>
           </Card>
         </Grid.Col>
-        <Grid.Col span={3}>
+        <Grid.Col span={4}>
           <Card withBorder p="md" className="trend-stat-card" style={{ textAlign: 'center' }}>
             <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Components</Text>
             <Text size="xl" fw={700} c="purple">{totalComponents}</Text>
-            <Text size="xs" c="green">Using tokens</Text>
+            <Text size="xs" c="dimmed">Using tokens</Text>
           </Card>
         </Grid.Col>
-        <Grid.Col span={3}>
+        <Grid.Col span={4}>
           <Card withBorder p="md" className="trend-stat-card" style={{ textAlign: 'center' }}>
-            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Top Category</Text>
-            <Text size="lg" fw={600} c="orange">Colors</Text>
-            <Text size="xs" c="dimmed">Most adopted</Text>
-          </Card>
-        </Grid.Col>
-        <Grid.Col span={3}>
-          <Card withBorder p="md" className="trend-stat-card" style={{ textAlign: 'center' }}>
-            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Health Score</Text>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Coverage Score</Text>
             <Text size="xl" fw={700} c="green">
               {coverage.coveragePercentage ? coverage.coveragePercentage.toFixed(0) : 'N/A'}%
             </Text>
-            <Text size="xs" c="green">Good coverage</Text>
+            <Text size="xs" c="dimmed">Overall adoption</Text>
           </Card>
         </Grid.Col>
       </Grid>
@@ -1125,106 +1109,60 @@ function renderUsageTrends(coverage: any) {
       {/* Category Trends */}
       <div>
         <Title order={6} mb="md">Usage by Category</Title>
-        <Stack gap="md">
-          {trends.map((trend) => (
-            <Card key={trend.category} withBorder p="md">
-              <Group justify="space-between" align="center">
-                <Group gap="md">
-                  <Box p="sm" style={{ background: 'var(--accent-primary)', borderRadius: '50%', color: 'white' }}>
-                    {trend.category === 'color' && <Palette size={16} />}
-                    {trend.category === 'spacing' && <Layers size={16} />}
-                    {trend.category === 'typography' && <Type size={16} />}
-                    {trend.category === 'border' && <Target size={16} />}
-                    {trend.category === 'shadow' && <Activity size={16} />}
-                  </Box>
-                  <div>
-                    <Text fw={600} tt="capitalize">{formatMetricName(trend.category)}</Text>
-                    <Text size="sm" c="dimmed">
-                      Most used: <Text span fw={500}>{trend.mostUsedToken}</Text>
-                    </Text>
-                  </div>
-                </Group>
-                
-                <Group gap="lg" align="center">
-                  <div style={{ textAlign: 'center' }}>
-                    <Text size="xs" c="dimmed">Current Usage</Text>
-                    <Text size="lg" fw={700}>{trend.currentUsage}</Text>
-                  </div>
-                  
-                  <div style={{ textAlign: 'center' }}>
-                    <Text size="xs" c="dimmed">Adoption</Text>
-                    <Badge size="lg" color={trend.adoption >= 60 ? 'green' : trend.adoption >= 40 ? 'yellow' : 'red'}>
-                      {trend.adoption.toFixed(0)}%
-                    </Badge>
-                  </div>
-                  
-                  <div style={{ textAlign: 'center' }}>
-                    <Text size="xs" c="dimmed">Trend</Text>
-                    <Group gap="xs">
-                      {trend.trend === 'up' ? (
-                        <TrendingUp size={18} color="var(--success)" />
-                      ) : (
-                        <TrendingUp size={18} color="var(--danger)" style={{ transform: 'rotate(180deg)' }} />
-                      )}
-                      <Text size="sm" c={trend.trend === 'up' ? 'green' : 'red'}>
-                        {trend.change}%
+        {trends.length > 0 ? (
+          <Stack gap="md">
+            {trends.map((trend) => (
+              <Card key={trend.category} withBorder p="md">
+                <Group justify="space-between" align="center">
+                  <Group gap="md">
+                    <Box p="sm" style={{ background: 'var(--accent-primary)', borderRadius: '50%', color: 'white' }}>
+                      {trend.category === 'color' && <Palette size={16} />}
+                      {trend.category === 'spacing' && <Layers size={16} />}
+                      {trend.category === 'typography' && <Type size={16} />}
+                      {trend.category === 'border' && <Target size={16} />}
+                      {trend.category === 'shadow' && <Activity size={16} />}
+                    </Box>
+                    <div>
+                      <Text fw={600} tt="capitalize">{formatMetricName(trend.category)}</Text>
+                      <Text size="sm" c="dimmed">
+                        Most used: <Text span fw={500}>{trend.mostUsedToken}</Text>
                       </Text>
-                    </Group>
-                  </div>
+                    </div>
+                  </Group>
+
+                  <Group gap="lg" align="center">
+                    <div style={{ textAlign: 'center' }}>
+                      <Text size="xs" c="dimmed">Current Usage</Text>
+                      <Text size="lg" fw={700}>{trend.currentUsage}</Text>
+                    </div>
+
+                    <div style={{ textAlign: 'center' }}>
+                      <Text size="xs" c="dimmed">Adoption</Text>
+                      <Badge size="lg" color={trend.adoption >= 60 ? 'green' : trend.adoption >= 40 ? 'yellow' : 'red'}>
+                        {trend.adoption.toFixed(0)}%
+                      </Badge>
+                    </div>
+                  </Group>
                 </Group>
-              </Group>
-            </Card>
-          ))}
-        </Stack>
+              </Card>
+            ))}
+          </Stack>
+        ) : (
+          <Alert color="blue" variant="light">
+            <Text>Category usage data is not available in this audit.</Text>
+          </Alert>
+        )}
       </div>
 
       {/* Usage Patterns */}
       <Card withBorder p="md">
         <Title order={6} mb="md">Usage Patterns</Title>
-        <Grid>
-          <Grid.Col span={6}>
-            <Text fw={600} mb="sm">Most Frequently Used Tokens</Text>
-            <Stack gap="xs">
-              {['primary-500', 'spacing-md', 'text-base', 'border-radius-sm', 'shadow-sm'].map((token, index) => (
-                <Group key={token} justify="space-between">
-                  <Text size="sm" style={{ fontFamily: 'monospace' }}>{token}</Text>
-                  <Group gap="xs">
-                    <Badge size="sm" variant="light">
-                      {Math.floor(Math.random() * 50) + 10} uses
-                    </Badge>
-                    <Progress 
-                      value={(5 - index) * 20} 
-                      size="sm" 
-                      style={{ width: '60px' }}
-                      color="blue"
-                    />
-                  </Group>
-                </Group>
-              ))}
-            </Stack>
-          </Grid.Col>
-          
-          <Grid.Col span={6}>
-            <Text fw={600} mb="sm">Token Adoption Recommendations</Text>
-            <Stack gap="sm">
-              <Alert color="blue" variant="light" p="sm">
-                <Text size="sm">
-                  <Text span fw={600}>Colors:</Text> Excellent adoption rate. Consider consolidating similar shades.
-                </Text>
-              </Alert>
-              <Alert color="yellow" variant="light" p="sm">
-                <Text size="sm">
-                  <Text span fw={600}>Spacing:</Text> Good usage but some hardcoded values detected.
-                </Text>
-              </Alert>
-              <Alert color="orange" variant="light" p="sm">
-                <Text size="sm">
-                  <Text span fw={600}>Typography:</Text> Low adoption. Review component implementations.
-                </Text>
-              </Alert>
-            </Stack>
-          </Grid.Col>
-        </Grid>
+        <Alert color="blue" variant="light">
+          <Text size="sm">
+            Detailed usage pattern analysis and frequency data is not available in this audit.
+            This information requires historical tracking across multiple audit runs.
+          </Text>
+        </Alert>
       </Card>
     </Stack>
   );

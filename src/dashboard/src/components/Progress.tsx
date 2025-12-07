@@ -42,9 +42,8 @@ const Progress: React.FC<ProgressProps> = ({ auditResult }) => {
 
   const categories = [
     'components',
-    'tokens', 
+    'tokens',
     'documentation',
-    'governance',
     'tooling',
     'performance',
     'accessibility'

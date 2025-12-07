@@ -8,7 +8,7 @@ A comprehensive CLI-based auditing tool that evaluates the health, structure, an
 
 ## ✨ Key Features
 
-- 🔍 **Comprehensive Analysis**: Audits 7 critical aspects of design systems
+- 🔍 **Comprehensive Analysis**: Audits 6 critical aspects of design systems
 - 📊 **Interactive Dashboard**: Real-time visualization with Chart.js
 - 🤖 **AI-Powered Insights**: Optional Claude API integration for intelligent recommendations
 - 📈 **Smart Scoring**: Weighted category grades (A-F) with detailed metrics
@@ -88,41 +88,37 @@ dsaudit config --reset # Reset to defaults
 - Type safety and prop validation
 - Test coverage
 - Accessibility compliance
-- Documentation completeness
+- Storybook documentation
 
 ### 2. Design Tokens (20% weight)
 - Token architecture (global, semantic, component-level)
 - **Smart Coverage Analysis**: Calculates actual token usage vs. hardcoded values
 - Format consistency across CSS, JSON, and JS tokens
 - Token redundancy detection
-- Semantic token relationships
+- Multi-theme/multi-mode support detection
 
-### 3. Documentation (15% weight)
+### 3. Documentation (20% weight)
+- Essential docs (README, CONTRIBUTING, CHANGELOG, API)
 - Component-level documentation
-- System-level guides
-- API documentation
-- Usage examples
+- Storybook stories
+- Governance guidelines (versioning, contribution process)
 
-### 4. Governance & Guidelines (10% weight)
-- Contributing guidelines
-- Versioning strategy
-- Change management
-- Release processes
-
-### 5. Tooling & Infrastructure (10% weight)
-- Build system configuration
-- Development environment
+### 4. Tooling & Infrastructure (12% weight)
+- Build system configuration (Vite, Webpack, esbuild)
+- Testing infrastructure (Jest, Vitest, Playwright)
 - CI/CD setup
-- Linting and formatting
+- Developer experience (linting, formatting, git hooks)
 
-### 6. Performance (10% weight)
+### 5. Performance (10% weight)
+- Code splitting and dynamic imports
 - Bundle size analysis
+- Image optimization
 - Build performance
-- Runtime performance metrics
 
-### 7. Accessibility (10% weight)
-- ARIA compliance
+### 6. Accessibility (13% weight)
+- ARIA compliance and labeling
 - Keyboard navigation
+- Focus management
 - Screen reader support
 - Color contrast
 
@@ -144,7 +140,6 @@ Configuration options:
     "components": true,
     "tokens": true,
     "documentation": true,
-    "governance": true,
     "tooling": true,
     "performance": true,
     "accessibility": true
@@ -155,7 +150,7 @@ Configuration options:
   },
   "dashboard": {
     "enabled": true,
-    "port": 3000,
+    "port": 4321,
     "autoOpen": true
   }
 }
