@@ -61,8 +61,7 @@ function CategoryHeader({ category }: { category: CategoryResult }) {
           </Group>
           {category.judge && deterministic !== undefined && (
             <Text size="sm" c="dimmed">
-              Blend of deterministic analysis ({deterministic}/100) and AI judge review (
-              {category.judge.score}/100, {category.judge.confidence} confidence)
+              Score blends static analysis with AI judge review — see the breakdown below.
             </Text>
           )}
         </Stack>

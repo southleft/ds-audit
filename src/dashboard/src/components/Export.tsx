@@ -87,7 +87,7 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
       `Score: ${auditResult.overallScore}/100 (Grade ${auditResult.overallGrade})` +
       (auditResult.partial ? ' — PARTIAL RESULT' : '') +
       `\n` +
-      auditResult.categories
+      (auditResult.categories ?? [])
         .map(c => `  ${c.name}: ${c.score}/100 (${c.grade})`)
         .join('\n');
     await navigator.clipboard.writeText(summary);
@@ -176,7 +176,7 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
               Categories
             </Text>
             <Text size="sm" fw={600}>
-              {auditResult.categories.length}
+              {auditResult.categories?.length ?? 0}
             </Text>
           </div>
           <div>
@@ -184,7 +184,7 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
               Files scanned
             </Text>
             <Text size="sm" fw={600}>
-              {auditResult.metadata.filesScanned}
+              {auditResult.metadata?.filesScanned ?? '—'}
             </Text>
           </div>
           <div>
@@ -192,7 +192,7 @@ const Export: React.FC<ExportProps> = ({ auditResult }) => {
               Recommendations
             </Text>
             <Text size="sm" fw={600}>
-              {auditResult.recommendations.length}
+              {auditResult.recommendations?.length ?? 0}
             </Text>
           </div>
         </SimpleGrid>

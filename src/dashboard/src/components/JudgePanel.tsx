@@ -91,7 +91,7 @@ export function JudgePanel({ category }: { category: CategoryResult }) {
         </Text>
       )}
 
-      {judge.strengths.length > 0 && (
+      {(judge.strengths?.length ?? 0) > 0 && (
         <>
           <Text size="sm" fw={600} mb={4}>
             Strengths
@@ -106,20 +106,20 @@ export function JudgePanel({ category }: { category: CategoryResult }) {
               </ThemeIcon>
             }
           >
-            {judge.strengths.map((strength, i) => (
+            {(judge.strengths ?? []).map((strength, i) => (
               <List.Item key={i}>{strength}</List.Item>
             ))}
           </List>
         </>
       )}
 
-      {judge.issues.length > 0 && (
+      {(judge.issues?.length ?? 0) > 0 && (
         <>
           <Text size="sm" fw={600} mb={4}>
             Issues raised by the AI judge
           </Text>
           <Stack gap="xs" mb="sm">
-            {judge.issues.map((issue, i) => (
+            {(judge.issues ?? []).map((issue, i) => (
               <Group key={i} align="flex-start" gap="xs" wrap="nowrap">
                 <Badge color={SEVERITY_COLORS[issue.severity] ?? 'gray'} size="xs" mt={3}>
                   {issue.severity}
@@ -139,16 +139,16 @@ export function JudgePanel({ category }: { category: CategoryResult }) {
         </>
       )}
 
-      {judge.evidenceFiles.length > 0 && (
+      {(judge.evidenceFiles?.length ?? 0) > 0 && (
         <>
           <Divider my="sm" />
           <Text size="xs" c="dimmed" mb={4}>
-            Evidence reviewed ({judge.evidenceFiles.length} file
-            {judge.evidenceFiles.length === 1 ? '' : 's'})
+            Evidence reviewed ({judge.evidenceFiles?.length ?? 0} file
+            {(judge.evidenceFiles?.length ?? 0) === 1 ? '' : 's'})
           </Text>
           <Spoiler maxHeight={60} showLabel="Show all evidence files" hideLabel="Hide">
             <Stack gap={2}>
-              {judge.evidenceFiles.map((file, i) => (
+              {(judge.evidenceFiles ?? []).map((file, i) => (
                 <Code key={i} style={{ alignSelf: 'flex-start' }}>
                   {file}
                 </Code>
