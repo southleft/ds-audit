@@ -38,17 +38,29 @@ export function PerformanceMetrics({ category }: { category: CategoryResult }) {
           {packaging ? (
             <Stack gap={6}>
               {Object.entries(PACKAGING_LABELS).map(([key, label]) => {
+                // The auditor emits a fraction (0–1): the share of a monorepo's
+                // library packages that declare this field. 1 = every package,
+                // 0 = none, in between = partial adoption.
                 const value = packaging[key];
+                const frac = typeof value === 'number' ? value : undefined;
                 return (
                   <Group key={key} justify="space-between">
                     <Text size="sm">{label}</Text>
-                    {typeof value === 'boolean' ? (
-                      <Badge color={value ? 'green' : 'red'} variant="light">
-                        {value ? 'present' : 'missing'}
-                      </Badge>
-                    ) : (
+                    {frac === undefined ? (
                       <Badge color="gray" variant="light">
                         unknown
+                      </Badge>
+                    ) : frac >= 1 ? (
+                      <Badge color="green" variant="light">
+                        present
+                      </Badge>
+                    ) : frac > 0 ? (
+                      <Badge color="yellow" variant="light">
+                        {Math.round(frac * 100)}% of packages
+                      </Badge>
+                    ) : (
+                      <Badge color="red" variant="light">
+                        missing
                       </Badge>
                     )}
                   </Group>

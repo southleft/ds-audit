@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { AuditConfig, AuditResult, CategoryResult, Finding } from '../types/index.js';
+import type { AuditConfig, AuditResult, Finding } from '../types/index.js';
 
 export type ReportFormat = 'json' | 'md';
 

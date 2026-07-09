@@ -1,6 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, AppShell, Burger, Center, Group, Loader, Stack, Text } from '@mantine/core';
+import {
+  Alert,
+  AppShell,
+  Badge,
+  Burger,
+  Center,
+  Group,
+  Loader,
+  Stack,
+  Text,
+  UnstyledButton,
+} from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { Sparkles, XCircle } from 'lucide-react';
 import Sidebar, { type Section } from './components/Sidebar';
 import Overview from './components/Overview';
 import Categories from './components/Categories';
@@ -8,7 +20,52 @@ import ActionPlan from './components/ActionPlan';
 import Progress from './components/Progress';
 import Export from './components/Export';
 import type { AuditResult } from './types';
+import { useProgress } from './hooks/useProgress';
 import { fetchAuditResults } from './utils/api';
+
+/**
+ * Compact activity indicator shown in the header from any view, so a running
+ * audit is visible even when the user has navigated away from Live Progress.
+ * Clicking it jumps to the progress view.
+ */
+function RunningIndicator({
+  progress,
+  onOpen,
+}: {
+  progress: ReturnType<typeof useProgress>;
+  onOpen: () => void;
+}) {
+  if (progress.auditError) {
+    return (
+      <UnstyledButton onClick={onOpen}>
+        <Badge color="red" variant="light" leftSection={<XCircle size={12} />}>
+          Audit failed
+        </Badge>
+      </UnstyledButton>
+    );
+  }
+
+  const aiRunning = progress.aiPhase === 'running';
+  if (progress.isAuditActive || aiRunning) {
+    return (
+      <UnstyledButton onClick={onOpen}>
+        <Badge
+          color={aiRunning ? 'grape' : 'blue'}
+          variant="light"
+          leftSection={aiRunning ? <Sparkles size={12} /> : <Loader size={12} color="blue" />}
+        >
+          {aiRunning ? 'AI judge reviewing…' : `Auditing… ${progress.progress}%`}
+        </Badge>
+      </UnstyledButton>
+    );
+  }
+
+  return (
+    <Text size="xs" c="dimmed">
+      Design system health report
+    </Text>
+  );
+}
 
 const SECTIONS: Section[] = ['overview', 'categories', 'action-plan', 'progress', 'export'];
 
@@ -86,6 +143,10 @@ function App() {
     });
   }, [loadAuditResults]);
 
+  // Single SSE subscription for the whole app: the header indicator and the
+  // Live Progress view both read this one connection.
+  const progress = useProgress(handleAuditComplete);
+
   const renderSection = () => {
     if (loading) {
       return (
@@ -108,17 +169,29 @@ function App() {
 
     switch (currentSection) {
       case 'overview':
-        return <Overview auditResult={auditResult} onSelectCategory={openCategory} />;
+        return (
+          <Overview
+            auditResult={auditResult}
+            onSelectCategory={openCategory}
+            onNavigate={navigate}
+          />
+        );
       case 'categories':
         return <Categories auditResult={auditResult} initialCategoryId={selectedCategoryId} />;
       case 'action-plan':
         return <ActionPlan auditResult={auditResult} />;
       case 'progress':
-        return <Progress auditResult={auditResult} onAuditComplete={handleAuditComplete} />;
+        return <Progress auditResult={auditResult} progress={progress} />;
       case 'export':
         return <Export auditResult={auditResult} />;
       default:
-        return <Overview auditResult={auditResult} onSelectCategory={openCategory} />;
+        return (
+          <Overview
+            auditResult={auditResult}
+            onSelectCategory={openCategory}
+            onNavigate={navigate}
+          />
+        );
     }
   };
 
@@ -138,9 +211,7 @@ function App() {
             <Burger opened={opened} onClick={toggle} size="sm" hiddenFrom="sm" />
             <Text fw={700}>dsaudit</Text>
           </Group>
-          <Text size="xs" c="dimmed">
-            Design system health report
-          </Text>
+          <RunningIndicator progress={progress} onOpen={() => navigate('progress')} />
         </Group>
       </AppShell.Header>
 

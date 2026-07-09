@@ -33,6 +33,8 @@ async function loadProjectEnv(projectPath: string): Promise<{ apiKey?: string; m
 
 export async function runCommand(options: RunOptions): Promise<void> {
   const logger = new Logger();
+  // Declared here so the catch can notify a running dashboard of failure.
+  let dashboard: DashboardServer | null = null;
 
   try {
     // Determine config file path
@@ -142,7 +144,6 @@ export async function runCommand(options: RunOptions): Promise<void> {
     };
 
     // Start dashboard server first if enabled
-    let dashboard: DashboardServer | null = null;
     if (config.dashboard.enabled) {
       if (!options.quiet) {
         logger.info('Starting dashboard server...');
@@ -289,18 +290,32 @@ export async function runCommand(options: RunOptions): Promise<void> {
       if (!options.quiet) {
         logger.updateSpinner('Running AI judge review...');
       }
+      dashboard?.sendProgressUpdate({ type: 'ai:start', message: 'AI judge review started...' });
     });
 
     engine.on('ai:category', (categoryId) => {
       if (!options.quiet) {
         logger.updateSpinner(`AI judge reviewing ${categoryId}...`);
       }
+      dashboard?.sendProgressUpdate({
+        type: 'ai:category',
+        category: categoryId,
+        message: `AI judge reviewing ${categoryId}...`,
+      });
     });
 
-    engine.on('ai:error', () => {
+    engine.on('ai:complete', () => {
+      dashboard?.sendProgressUpdate({ type: 'ai:complete', message: 'AI judge review complete' });
+    });
+
+    engine.on('ai:error', (error) => {
       if (!options.quiet) {
         logger.updateSpinner('AI judge review failed — continuing with deterministic scores...');
       }
+      dashboard?.sendProgressUpdate({
+        type: 'ai:error',
+        error: error instanceof Error ? error.message : 'AI judge review failed',
+      });
     });
 
     const results = await engine.run();
@@ -353,8 +368,12 @@ export async function runCommand(options: RunOptions): Promise<void> {
 
   } catch (error) {
     logger.stopSpinner();
-    logger.error(`Audit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    process.exit(1);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(`Audit failed: ${message}`);
+    // Surface the failure in a connected dashboard instead of leaving its
+    // progress bar to silently flip to "disconnected".
+    dashboard?.sendProgressUpdate({ type: 'audit:error', error: message });
+    if (!dashboard) process.exit(1);
   }
 }
 

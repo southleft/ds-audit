@@ -1,6 +1,5 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import os from 'os';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import dotenv from 'dotenv';
@@ -144,7 +143,7 @@ export async function initCommand(options: any): Promise<void> {
         await fs.unlink(resultsPath);
         logger.info('Cleared previous audit results');
       }
-    } catch (error) {
+    } catch {
       // Ignore errors, just continue
     }
     
@@ -222,14 +221,28 @@ export async function initCommand(options: any): Promise<void> {
 
     engine.on('ai:start', () => {
       logger.updateSpinner('Running AI judge review...');
+      dashboard?.sendProgressUpdate({ type: 'ai:start', message: 'AI judge review started...' });
     });
 
     engine.on('ai:category', (categoryId) => {
       logger.updateSpinner(`AI judge reviewing ${categoryId}...`);
+      dashboard?.sendProgressUpdate({
+        type: 'ai:category',
+        category: categoryId,
+        message: `AI judge reviewing ${categoryId}...`,
+      });
     });
 
-    engine.on('ai:error', () => {
+    engine.on('ai:complete', () => {
+      dashboard?.sendProgressUpdate({ type: 'ai:complete', message: 'AI judge review complete' });
+    });
+
+    engine.on('ai:error', (error) => {
       logger.updateSpinner('AI judge review failed — continuing with deterministic scores...');
+      dashboard?.sendProgressUpdate({
+        type: 'ai:error',
+        error: error instanceof Error ? error.message : 'AI judge review failed',
+      });
     });
 
     const results = await engine.run();

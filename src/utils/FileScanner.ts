@@ -104,7 +104,6 @@ export class FileScanner {
       
       // Aggregate all dependencies from all package.json files
       const allDeps: Record<string, string> = {};
-      let frameworkVersion: string | undefined;
       
       for (const file of packageJsonFiles) {
         try {
@@ -118,7 +117,7 @@ export class FileScanner {
           if (pkg.devDependencies) {
             Object.assign(allDeps, pkg.devDependencies);
           }
-        } catch (e) {
+        } catch {
           // Skip invalid package.json files
         }
       }

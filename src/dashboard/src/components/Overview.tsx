@@ -30,19 +30,28 @@ import { categoryLabel, formatDuration, formatWeight, scoreColor } from '../lib/
 interface OverviewProps {
   auditResult: AuditResult;
   onSelectCategory: (categoryId: string) => void;
+  onNavigate: (section: 'action-plan') => void;
 }
 
 function StatCard({
   icon,
   label,
   value,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
+  onClick?: () => void;
 }) {
   return (
-    <Card withBorder radius="md" padding="md">
+    <Card
+      withBorder
+      radius="md"
+      padding="md"
+      onClick={onClick}
+      style={onClick ? { cursor: 'pointer' } : undefined}
+    >
       <Group gap="sm" wrap="nowrap">
         <ThemeIcon variant="light" color="blue" size="lg" radius="md">
           {icon}
@@ -60,7 +69,7 @@ function StatCard({
   );
 }
 
-const Overview: React.FC<OverviewProps> = ({ auditResult, onSelectCategory }) => {
+const Overview: React.FC<OverviewProps> = ({ auditResult, onSelectCategory, onNavigate }) => {
   const { overallScore, overallGrade, partial, categories, metadata } = auditResult;
   const failedCategories = metadata?.failedCategories ?? [];
   const frameworks = metadata?.frameworksDetected ?? [];
@@ -168,6 +177,11 @@ const Overview: React.FC<OverviewProps> = ({ auditResult, onSelectCategory }) =>
           icon={<ListChecks size={18} />}
           label="Recommendations"
           value={auditResult.recommendations?.length ?? 0}
+          onClick={
+            (auditResult.recommendations?.length ?? 0) > 0
+              ? () => onNavigate('action-plan')
+              : undefined
+          }
         />
       </SimpleGrid>
 

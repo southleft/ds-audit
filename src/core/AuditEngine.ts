@@ -165,7 +165,7 @@ export class AuditEngine extends EventEmitter {
     if (this.judge) {
       try {
         aiInsights = (await this.judge.generateInsights(categoryResults, score)) ?? undefined;
-      } catch (error) {
+      } catch {
         this.logger.warn('AI insights generation failed; omitting insights');
       }
     }

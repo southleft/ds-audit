@@ -16,13 +16,13 @@ import {
 } from '@mantine/core';
 import { Activity, CheckCircle, Clock, Play, Sparkles, XCircle } from 'lucide-react';
 import type { AuditResult } from '../types';
-import { useProgress, type CategoryStatus } from '../hooks/useProgress';
+import { type CategoryStatus, type ProgressState } from '../hooks/useProgress';
 import { startAudit } from '../utils/api';
 
 interface ProgressProps {
   auditResult: AuditResult | null;
-  /** Called when a live audit completes so the app can reload fresh results. */
-  onAuditComplete: () => void;
+  /** Live progress state, owned by App so the header indicator shares one SSE connection. */
+  progress: ProgressState;
 }
 
 function statusIcon(status: CategoryStatus | undefined, isCurrent: boolean) {
@@ -33,8 +33,7 @@ function statusIcon(status: CategoryStatus | undefined, isCurrent: boolean) {
   return <Clock size={18} color="var(--mantine-color-gray-6)" />;
 }
 
-const Progress: React.FC<ProgressProps> = ({ auditResult, onAuditComplete }) => {
-  const state = useProgress(onAuditComplete);
+const Progress: React.FC<ProgressProps> = ({ auditResult, progress: state }) => {
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 

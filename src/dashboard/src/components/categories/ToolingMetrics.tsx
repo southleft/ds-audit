@@ -33,12 +33,18 @@ export function ToolingMetrics({ category }: { category: CategoryResult }) {
           Stack
         </Title>
         <Stack gap={6}>
-          <Group justify="space-between">
-            <Text size="sm">Framework</Text>
-            <Badge variant="light" color="blue">
-              {framework && framework !== 'unknown' ? framework : 'not detected'}
-            </Badge>
-          </Group>
+          {/* `framework` is the project-type classifier (react/vue/…); it can
+              read 'unknown' for a monorepo root even when a framework is
+              clearly in use, so only assert it when confidently detected —
+              the tools list below still surfaces React/etc. */}
+          {framework && framework !== 'unknown' && (
+            <Group justify="space-between">
+              <Text size="sm">Framework</Text>
+              <Badge variant="light" color="blue">
+                {framework}
+              </Badge>
+            </Group>
+          )}
           <BooleanRow label="TypeScript" value={bool(m, 'hasTypeScript')} />
           <BooleanRow label="Storybook" value={bool(m, 'hasStorybook')} />
           <BooleanRow label="Tests" value={bool(m, 'hasTests')} />
@@ -64,7 +70,15 @@ export function ToolingMetrics({ category }: { category: CategoryResult }) {
         <Title order={4} mb="md">
           Score breakdown
         </Title>
-        <ScoreBreakdown breakdown={rec(m, 'scoreBreakdown')} />
+        <ScoreBreakdown
+          breakdown={rec(m, 'scoreBreakdown')}
+          labels={{
+            buildTools: 'Build tools',
+            frameworkRuntime: 'Framework & runtime',
+            testingSetup: 'Testing setup',
+            ciDxExperience: 'CI / DX',
+          }}
+        />
       </Card>
     </SimpleGrid>
   );

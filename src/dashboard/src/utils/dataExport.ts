@@ -37,7 +37,7 @@ function toCSV(data: AuditResult): string {
     'Warnings',
   ];
 
-  const rows = data.categories.map(cat => {
+  const rows = (data.categories ?? []).map(cat => {
     const errorCount = cat.findings?.filter(f => f.type === 'error').length ?? 0;
     const warningCount = cat.findings?.filter(f => f.type === 'warning').length ?? 0;
     return [
@@ -142,7 +142,7 @@ function toMarkdown(data: AuditResult): string {
     lines.push('');
   });
 
-  if (data.recommendations.length > 0) {
+  if ((data.recommendations?.length ?? 0) > 0) {
     lines.push('## Recommendations');
     lines.push('');
     (['high', 'medium', 'low'] as const).forEach(priority => {
