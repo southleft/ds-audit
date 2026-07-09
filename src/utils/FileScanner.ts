@@ -32,28 +32,39 @@ export class FileScanner {
 
   async scanFiles(patterns: string | string[]): Promise<FileInfo[]> {
     const patternArray = Array.isArray(patterns) ? patterns : [patterns];
+
+    // Standalone '!...' entries are exclusions, not match patterns — glob
+    // returns zero results for them, so they must go into `ignore` instead.
+    const includePatterns = patternArray.filter(p => !p.startsWith('!'));
+    const negations = patternArray
+      .filter(p => p.startsWith('!'))
+      .map(p => p.slice(1));
+    const ignore = [...this.config.excludePatterns, ...negations];
+
+    const seen = new Set<string>();
     const allFiles: FileInfo[] = [];
 
-    for (const pattern of patternArray) {
-      const cacheKey = `${this.config.projectPath}:${pattern}`;
-      
-      if (this.cache.has(cacheKey)) {
-        allFiles.push(...this.cache.get(cacheKey)!);
-        continue;
+    for (const pattern of includePatterns) {
+      const cacheKey = `${this.config.projectPath}:${pattern}:${ignore.join(',')}`;
+
+      let fileInfos = this.cache.get(cacheKey);
+      if (!fileInfos) {
+        const files = await glob(pattern, {
+          cwd: this.config.projectPath,
+          ignore,
+          absolute: false,
+        });
+        fileInfos = await Promise.all(files.map(async file => this.getFileInfo(file)));
+        this.cache.set(cacheKey, fileInfos);
       }
 
-      const files = await glob(pattern, {
-        cwd: this.config.projectPath,
-        ignore: this.config.excludePatterns,
-        absolute: false,
-      });
-
-      const fileInfos = await Promise.all(
-        files.map(async (file) => this.getFileInfo(file))
-      );
-
-      this.cache.set(cacheKey, fileInfos);
-      allFiles.push(...fileInfos);
+      // Overlapping patterns must not double-count the same file.
+      for (const info of fileInfos) {
+        if (!seen.has(info.path)) {
+          seen.add(info.path);
+          allFiles.push(info);
+        }
+      }
     }
 
     return allFiles;

@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { Logger } from '../../utils/Logger.js';
 import { AuditConfig, AuditResult } from '../../types/index.js';
 import { AuditEngine } from '../../core/AuditEngine.js';
-import { ReportGenerator } from '../../core/ReportGenerator.js';
+import { ReportGenerator, ReportFormat } from '../../core/ReportGenerator.js';
 import { DashboardServer } from '../../dashboard/DashboardServer.js';
 
 interface RunOptions {
@@ -24,7 +24,7 @@ async function loadProjectEnv(projectPath: string): Promise<{ apiKey?: string; m
     const parsed = dotenv.parse(envContent);
     return {
       apiKey: parsed.ANTHROPIC_API_KEY,
-      model: parsed.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514'
+      model: parsed.ANTHROPIC_MODEL
     };
   } catch {
     return {};
@@ -67,10 +67,11 @@ export async function runCommand(options: RunOptions): Promise<void> {
       process.exit(1);
     }
 
-    // Load API key from .env if available
+    // Load API key from project .env, falling back to the process environment
     const envConfig = await loadProjectEnv(config.projectPath);
-    if (envConfig.apiKey && config.ai) {
-      config.ai.apiKey = envConfig.apiKey;
+    const apiKey = envConfig.apiKey || process.env.ANTHROPIC_API_KEY;
+    if (apiKey && config.ai) {
+      config.ai.apiKey = apiKey;
       config.ai.model = envConfig.model || config.ai.model;
     }
 
@@ -92,6 +93,13 @@ export async function runCommand(options: RunOptions): Promise<void> {
     // Override dashboard setting if specified
     if (options.dashboard !== undefined) {
       config.dashboard.enabled = options.dashboard;
+    }
+
+    // Quiet mode is for CI — the process must exit when reports are written,
+    // so never hold it open on a dashboard server unless --dashboard was
+    // explicitly passed alongside it.
+    if (options.quiet && options.dashboard === undefined) {
+      config.dashboard.enabled = false;
     }
 
     // Validate project path exists
@@ -277,6 +285,24 @@ export async function runCommand(options: RunOptions): Promise<void> {
       }
     });
 
+    engine.on('ai:start', () => {
+      if (!options.quiet) {
+        logger.updateSpinner('Running AI judge review...');
+      }
+    });
+
+    engine.on('ai:category', (categoryId) => {
+      if (!options.quiet) {
+        logger.updateSpinner(`AI judge reviewing ${categoryId}...`);
+      }
+    });
+
+    engine.on('ai:error', () => {
+      if (!options.quiet) {
+        logger.updateSpinner('AI judge review failed — continuing with deterministic scores...');
+      }
+    });
+
     const results = await engine.run();
 
     if (!options.quiet) {
@@ -295,14 +321,30 @@ export async function runCommand(options: RunOptions): Promise<void> {
     }
 
     // Generate reports
-    const formats = options.format?.split(',') || ['json', 'md'];
+    const requested = (options.format?.split(',') || ['json', 'md'])
+      .map(f => f.trim().toLowerCase())
+      .filter(f => f.length > 0);
+
+    if (requested.includes('html')) {
+      logger.warn('html reports were removed — use --dashboard for the interactive view');
+    }
+
+    const unknown = requested.filter(f => f !== 'json' && f !== 'md' && f !== 'html');
+    if (unknown.length > 0) {
+      logger.warn(`Ignoring unsupported report format(s): ${unknown.join(', ')}`);
+    }
+
+    let formats = [...new Set(requested.filter((f): f is ReportFormat => f === 'json' || f === 'md'))];
+    if (formats.length === 0) {
+      formats = ['json', 'md'];
+    }
 
     if (!options.quiet) {
       logger.info(`Generating reports (${formats.join(', ')})...`);
     }
 
     const reportGenerator = new ReportGenerator(config);
-    await reportGenerator.generate(results);
+    await reportGenerator.generate(results, formats);
 
     // Display summary unless quiet mode
     if (!options.quiet) {
@@ -342,5 +384,6 @@ function displaySummary(results: AuditResult, logger: Logger, config: AuditConfi
   if (config.dashboard.enabled) {
     logger.log('');
     logger.log(`Dashboard: ${chalk.cyan(`http://localhost:${config.dashboard.port}`)}`);
+    logger.log(chalk.gray('The dashboard server keeps running — press Ctrl+C to stop.'));
   }
 }

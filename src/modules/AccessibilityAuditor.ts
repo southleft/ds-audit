@@ -1,6 +1,28 @@
 import type { AuditConfig, CategoryResult, Finding } from '../types/index.js';
 import { FileScanner } from '../utils/FileScanner.js';
 
+interface StaticViolation {
+  rule: 'img-missing-alt' | 'positive-tabindex' | 'clickable-non-interactive';
+  message: string;
+  path: string;
+  line: number;
+  suggestion: string;
+}
+
+/** Dependencies that indicate real accessibility tooling adoption. */
+const A11Y_LINT_PLUGINS = ['eslint-plugin-jsx-a11y'];
+const A11Y_RUNTIME_TOOLS = [
+  'jest-axe',
+  'axe-core',
+  'cypress-axe',
+  'pa11y',
+  'vitest-axe',
+];
+const A11Y_STORYBOOK_ADDONS = ['@storybook/addon-a11y'];
+
+/** Cap on per-violation findings so a large repo doesn't flood the report. */
+const MAX_VIOLATION_FINDINGS = 40;
+
 export class AccessibilityAuditor {
   private config: AuditConfig;
   private scanner: FileScanner;
@@ -12,394 +34,354 @@ export class AccessibilityAuditor {
 
   async audit(): Promise<CategoryResult> {
     const findings: Finding[] = [];
-    const metrics: Record<string, any> = {
-      filesScanned: 0,
-      componentsWithA11y: 0,
-      totalComponents: 0,
-      ariaUsage: 0,
-      semanticHTML: 0,
-      colorContrastIssues: 0,
-    };
 
-    // Scan component files
-    const componentFiles = await this.scanner.scanFiles([
-      '**/*.{tsx,jsx}',
-      '!**/node_modules/**',
-      '!**/dist/**',
-      '!**/build/**',
-    ]);
-    
-    metrics.filesScanned = componentFiles.length;
-    metrics.totalComponents = componentFiles.length;
+    // 1. Tooling adoption (primary signal) — deps aggregated across every
+    //    package.json in the repo, so monorepos are covered.
+    const deps = await this.collectDependencies();
+    const lintPlugins = A11Y_LINT_PLUGINS.filter(t => deps.has(t));
+    const runtimeTools = A11Y_RUNTIME_TOOLS.filter(t => deps.has(t)).concat(
+      Array.from(deps).filter(d => d.startsWith('@axe-core/'))
+    );
+    const storybookAddons = A11Y_STORYBOOK_ADDONS.filter(t => deps.has(t));
+    const detectedTools = [...lintPlugins, ...runtimeTools, ...storybookAddons];
 
-    // Analyze each component
-    for (const file of componentFiles) {
-      await this.analyzeComponentAccessibility(file.path, findings, metrics);
-    }
+    // 2. Is jsx-a11y actually enabled in an eslint config (not just installed)?
+    const eslintJsxA11yEnabled = await this.checkEslintJsxA11y();
 
-    // Check for accessibility testing
-    await this.checkA11yTesting(findings);
+    // 3. Context-free static JSX checks with file+line evidence.
+    const { violations, autoFocusCount, filesScanned } = await this.scanStaticViolations();
 
-    // Check for semantic HTML usage
-    await this.checkSemanticHTML(findings, metrics);
+    this.generateToolingFindings(
+      findings,
+      lintPlugins,
+      runtimeTools,
+      storybookAddons,
+      eslintJsxA11yEnabled
+    );
+    this.generateViolationFindings(findings, violations, autoFocusCount);
 
-    // Check for focus management
-    await this.checkFocusManagement(findings);
+    // Honest disclosure: this is static analysis, not WCAG verification.
+    findings.push({
+      id: 'a11y-scope-disclosure',
+      type: 'info',
+      message:
+        'Accessibility score reflects tooling adoption and static JSX checks only. ' +
+        'Full WCAG compliance requires runtime testing (axe on rendered output, keyboard ' +
+        'and screen-reader review, contrast measurement) that this tool does not perform.',
+      severity: 'low',
+    });
 
-    // Check for color contrast (basic check)
-    await this.checkColorContrast(findings, metrics);
+    // Score formula (documented so the number is defensible):
+    //   toolingScore (0-100): lint plugin installed = 30, runtime axe-style
+    //     testing (jest-axe/axe-core/@axe-core/*/cypress-axe/pa11y) = 45,
+    //     Storybook a11y addon = 25.
+    //   lintScore (0-100): 100 when an eslint config actually enables
+    //     jsx-a11y; 0 otherwise (installation alone scores under tooling).
+    //   violationScore (0-100): 100 - 250 * (violations / files scanned),
+    //     floored at 0 — i.e. 0.4 static violations per component file zeroes
+    //     this axis. 100 when no component files exist to scan.
+    //   score = round(0.50 * toolingScore + 0.20 * lintScore + 0.30 * violationScore)
+    const toolingScore =
+      (lintPlugins.length > 0 ? 30 : 0) +
+      (runtimeTools.length > 0 ? 45 : 0) +
+      (storybookAddons.length > 0 ? 25 : 0);
+    const lintScore = eslintJsxA11yEnabled ? 100 : 0;
+    const violationScore =
+      filesScanned === 0
+        ? 100
+        : Math.max(0, Math.round(100 - 250 * (violations.length / filesScanned)));
 
-    // Generate overall findings
-    this.generateOverallFindings(findings, metrics);
-
-    const score = this.calculateScore(findings, metrics);
+    const score = Math.round(
+      0.5 * toolingScore + 0.2 * lintScore + 0.3 * violationScore
+    );
 
     return {
       id: 'accessibility',
       name: 'Accessibility',
-      score,
-      grade: this.getGrade(score),
-      weight: 0.10,
+      score: Math.max(0, Math.min(100, score)),
+      grade: '', // stamped by the engine
+      weight: 0, // stamped by the engine
       findings,
-      metrics,
+      metrics: {
+        filesScanned,
+        toolsDetected: detectedTools,
+        eslintJsxA11yEnabled,
+        staticViolationCount: violations.length,
+        staticViolationsByRule: {
+          imgMissingAlt: violations.filter(v => v.rule === 'img-missing-alt').length,
+          positiveTabIndex: violations.filter(v => v.rule === 'positive-tabindex').length,
+          clickableNonInteractive: violations.filter(
+            v => v.rule === 'clickable-non-interactive'
+          ).length,
+        },
+        autoFocusCount,
+        scoreBreakdown: {
+          tooling: toolingScore,
+          lintEnforcement: lintScore,
+          staticViolations: violationScore,
+        },
+      },
     };
   }
 
-  private async analyzeComponentAccessibility(
-    filePath: string,
+  /** Aggregate dependencies + devDependencies across all package.json files. */
+  private async collectDependencies(): Promise<Set<string>> {
+    const deps = new Set<string>();
+    const packageFiles = await this.scanner.scanFiles([
+      '**/package.json',
+      '!**/node_modules/**',
+      '!**/dist/**',
+      '!**/build/**',
+    ]);
+
+    for (const file of packageFiles) {
+      try {
+        const pkg = JSON.parse(await this.scanner.readFile(file.path));
+        for (const key of Object.keys({
+          ...pkg.dependencies,
+          ...pkg.devDependencies,
+        })) {
+          deps.add(key);
+        }
+      } catch {
+        // Unparseable package.json — skip
+      }
+    }
+    return deps;
+  }
+
+  /** True when any eslint config file references the jsx-a11y plugin. */
+  private async checkEslintJsxA11y(): Promise<boolean> {
+    const configFiles = await this.scanner.scanFiles([
+      '**/.eslintrc',
+      '**/.eslintrc.{js,cjs,mjs,json,yaml,yml}',
+      '**/eslint.config.{js,cjs,mjs,ts,mts,cts}',
+      '!**/node_modules/**',
+    ]);
+
+    for (const file of configFiles) {
+      try {
+        const content = await this.scanner.readFile(file.path);
+        if (content.includes('jsx-a11y')) return true;
+      } catch {
+        // unreadable config — skip
+      }
+    }
+
+    // eslintConfig embedded in package.json
+    const packageFiles = await this.scanner.scanFiles([
+      '**/package.json',
+      '!**/node_modules/**',
+    ]);
+    for (const file of packageFiles) {
+      try {
+        const pkg = JSON.parse(await this.scanner.readFile(file.path));
+        if (pkg.eslintConfig && JSON.stringify(pkg.eslintConfig).includes('jsx-a11y')) {
+          return true;
+        }
+      } catch {
+        // skip
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Static JSX checks that are valid without runtime context:
+   *   - <img> without an alt attribute
+   *   - positive tabIndex values (tabIndex={1} and up break tab order)
+   *   - onClick on div/span without role or tabIndex (mouse-only interaction)
+   *   - autoFocus prevalence (reported, not scored — occasionally legitimate)
+   * Test and story files are excluded so fixtures don't count as violations.
+   */
+  private async scanStaticViolations(): Promise<{
+    violations: StaticViolation[];
+    autoFocusCount: number;
+    filesScanned: number;
+  }> {
+    const files = await this.scanner.scanFiles([
+      '**/*.{tsx,jsx}',
+      '!**/node_modules/**',
+      '!**/dist/**',
+      '!**/build/**',
+      '!**/*.test.*',
+      '!**/*.spec.*',
+      '!**/*.stories.*',
+      '!**/*.story.*',
+    ]);
+
+    const violations: StaticViolation[] = [];
+    let autoFocusCount = 0;
+
+    for (const file of files) {
+      let content: string;
+      try {
+        content = await this.scanner.readFile(file.path);
+      } catch {
+        continue;
+      }
+
+      // <img ...> without alt=
+      for (const match of content.matchAll(/<img\b[^>]*?\/?>/gs)) {
+        if (!/\balt\s*=/.test(match[0])) {
+          violations.push({
+            rule: 'img-missing-alt',
+            message: `<img> without alt attribute`,
+            path: file.path,
+            line: this.lineOf(content, match.index ?? 0),
+            suggestion:
+              'Add alt text (or alt="" for purely decorative images) so screen readers can handle the image',
+          });
+        }
+      }
+
+      // Positive tabIndex: tabIndex={1}, tabIndex="2", tabindex="3"
+      for (const match of content.matchAll(
+        /\btab[iI]ndex\s*=\s*(?:\{\s*)?["']?([0-9]+)/g
+      )) {
+        if (parseInt(match[1], 10) >= 1) {
+          violations.push({
+            rule: 'positive-tabindex',
+            message: `Positive tabIndex (${match[1]}) disrupts natural tab order`,
+            path: file.path,
+            line: this.lineOf(content, match.index ?? 0),
+            suggestion: 'Use tabIndex={0} (focusable in order) or tabIndex={-1} (programmatic focus) instead',
+          });
+        }
+      }
+
+      // onClick on div/span without role or tabIndex
+      for (const match of content.matchAll(/<(div|span)\b[^>]*?onClick[^>]*?>/gs)) {
+        const tag = match[0];
+        if (!/\brole\s*=/.test(tag) && !/\btabIndex\s*=/.test(tag)) {
+          violations.push({
+            rule: 'clickable-non-interactive',
+            message: `<${match[1]}> with onClick but no role or tabIndex (keyboard users cannot activate it)`,
+            path: file.path,
+            line: this.lineOf(content, match.index ?? 0),
+            suggestion:
+              'Use a <button>, or add role="button", tabIndex={0}, and a keyboard handler',
+          });
+        }
+      }
+
+      autoFocusCount += (content.match(/\bautoFocus\b/g) || []).length;
+    }
+
+    return { violations, autoFocusCount, filesScanned: files.length };
+  }
+
+  private lineOf(content: string, index: number): number {
+    let line = 1;
+    for (let i = 0; i < index && i < content.length; i++) {
+      if (content[i] === '\n') line++;
+    }
+    return line;
+  }
+
+  private generateToolingFindings(
     findings: Finding[],
-    metrics: any
-  ): Promise<void> {
-    try {
-      const content = await this.scanner.readFile(filePath);
-      
-      // Check for ARIA attributes
-      const ariaMatches = content.match(/aria-[a-z]+/g) || [];
-      if (ariaMatches.length > 0) {
-        metrics.ariaUsage++;
-        metrics.componentsWithA11y++;
-      }
+    lintPlugins: string[],
+    runtimeTools: string[],
+    storybookAddons: string[],
+    eslintJsxA11yEnabled: boolean
+  ): void {
+    const allTools = [...lintPlugins, ...runtimeTools, ...storybookAddons];
 
-      // Check for common accessibility patterns
-      const a11yPatterns = {
-        hasAltText: /alt\s*=/,
-        hasAriaLabel: /aria-label\s*=/,
-        hasAriaLabelledBy: /aria-labelledby\s*=/,
-        hasRole: /role\s*=/,
-        hasTabIndex: /tabIndex\s*=/,
-        hasSrOnly: /sr-only|visually-hidden|screen-reader/,
-      };
-
-      let hasA11yFeatures = false;
-      for (const [feature, pattern] of Object.entries(a11yPatterns)) {
-        if (pattern.test(content)) {
-          hasA11yFeatures = true;
-          break;
-        }
-      }
-
-      // Check for keyboard event handlers
-      const hasKeyboardHandlers = /onKey(Down|Up|Press)/.test(content);
-      if (hasKeyboardHandlers) {
-        metrics.componentsWithA11y++;
-      }
-
-      // Check for focus trap pattern
-      const hasFocusTrap = /focus.*trap|FocusTrap|useFocusTrap/.test(content);
-      if (hasFocusTrap) {
-        findings.push({
-          id: `a11y-focus-trap-${filePath}`,
-          type: 'success',
-          message: `Component implements focus trapping: ${filePath}`,
-          severity: 'low',
-        });
-      }
-
-      // Check for missing alt text on images
-      const imgTags = content.match(/<img[^>]+>/g) || [];
-      const imgTagsWithoutAlt = imgTags.filter(tag => !tag.includes('alt='));
-      if (imgTagsWithoutAlt.length > 0) {
-        findings.push({
-          id: `a11y-missing-alt-${filePath}`,
-          type: 'error',
-          message: `Missing alt text on images in ${filePath}`,
-          severity: 'high',
-          path: filePath,
-          suggestion: 'Add alt text to all images for screen reader users',
-        });
-      }
-
-      // Check for button accessibility
-      const buttonPatterns = /<button[^>]*>|<Button[^>]*>/g;
-      const buttons = content.match(buttonPatterns) || [];
-      const inaccessibleButtons = buttons.filter(button => {
-        return !button.includes('aria-label') && 
-               !button.includes('aria-labelledby') &&
-               !button.includes('title');
-      });
-      
-      if (inaccessibleButtons.length > 0 && content.includes('<Icon') && !content.includes('children')) {
-        findings.push({
-          id: `a11y-icon-button-${filePath}`,
-          type: 'warning',
-          message: `Icon-only buttons may need aria-label in ${filePath}`,
-          severity: 'medium',
-          path: filePath,
-          suggestion: 'Add aria-label to icon-only buttons',
-        });
-      }
-    } catch (error) {
-      // Error reading file
-    }
-  }
-
-  private async checkA11yTesting(findings: Finding[]): Promise<void> {
-    // Check for accessibility testing tools
-    try {
-      const packageJson = JSON.parse(await this.scanner.readFile('package.json'));
-      const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-      
-      const a11yTools = [
-        'jest-axe',
-        '@testing-library/jest-dom',
-        'pa11y',
-        'axe-core',
-        'react-axe',
-      ];
-      
-      const foundTools = a11yTools.filter(tool => deps[tool]);
-      
-      if (foundTools.length > 0) {
-        findings.push({
-          id: 'a11y-testing-tools',
-          type: 'success',
-          message: `Accessibility testing tools found: ${foundTools.join(', ')}`,
-          severity: 'low',
-        });
-      } else {
-        findings.push({
-          id: 'a11y-no-testing',
-          type: 'warning',
-          message: 'No accessibility testing tools detected',
-          severity: 'high',
-          suggestion: 'Install jest-axe or @testing-library/jest-dom for accessibility testing',
-        });
-      }
-    } catch (error) {
-      // Error checking package.json
-    }
-  }
-
-  private async checkSemanticHTML(findings: Finding[], metrics: any): Promise<void> {
-    // Sample check for semantic HTML usage
-    const htmlFiles = await this.scanner.scanFiles(['**/*.{html,tsx,jsx}', '!**/node_modules/**']);
-    
-    let semanticElements = 0;
-    let nonSemanticDivs = 0;
-    
-    for (const file of htmlFiles.slice(0, 20)) { // Check first 20 files
-      try {
-        const content = await this.scanner.readFile(file.path);
-        
-        // Count semantic elements
-        const semanticTags = ['<nav', '<main', '<header', '<footer', '<article', '<section', '<aside'];
-        semanticTags.forEach(tag => {
-          if (content.includes(tag)) {
-            semanticElements++;
-          }
-        });
-        
-        // Count divs that might be replaceable
-        const divCount = (content.match(/<div/g) || []).length;
-        if (divCount > 10) {
-          nonSemanticDivs++;
-        }
-      } catch (error) {
-        // Error reading file
-      }
-    }
-    
-    metrics.semanticHTML = semanticElements;
-    
-    if (semanticElements > 5) {
+    if (allTools.length > 0) {
       findings.push({
-        id: 'a11y-semantic-html',
+        id: 'a11y-tooling-present',
         type: 'success',
-        message: 'Good use of semantic HTML elements',
+        message: `Accessibility tooling detected: ${allTools.join(', ')}`,
         severity: 'low',
       });
     } else {
       findings.push({
-        id: 'a11y-low-semantic-html',
-        type: 'warning',
-        message: 'Limited use of semantic HTML elements',
-        severity: 'medium',
-        suggestion: 'Use semantic HTML elements like <nav>, <main>, <header> instead of generic <div>',
-      });
-    }
-  }
-
-  private async checkFocusManagement(findings: Finding[]): Promise<void> {
-    // Check for focus management patterns
-    const jsFiles = await this.scanner.scanFiles(['**/*.{js,jsx,ts,tsx}', '!**/node_modules/**']);
-    
-    let focusManagementFound = false;
-    const focusPatterns = [
-      /\.focus\(\)/,
-      /useFocus/,
-      /focusManager/,
-      /trapFocus/,
-      /restoreFocus/,
-    ];
-    
-    for (const file of jsFiles.slice(0, 30)) { // Check first 30 files
-      try {
-        const content = await this.scanner.readFile(file.path);
-        
-        for (const pattern of focusPatterns) {
-          if (pattern.test(content)) {
-            focusManagementFound = true;
-            break;
-          }
-        }
-        
-        if (focusManagementFound) break;
-      } catch (error) {
-        // Error reading file
-      }
-    }
-    
-    if (focusManagementFound) {
-      findings.push({
-        id: 'a11y-focus-management',
-        type: 'success',
-        message: 'Focus management patterns detected',
-        severity: 'low',
-      });
-    } else {
-      findings.push({
-        id: 'a11y-no-focus-management',
-        type: 'info',
-        message: 'Consider implementing focus management for modals and dynamic content',
-        severity: 'low',
-      });
-    }
-  }
-
-  private async checkColorContrast(findings: Finding[], metrics: any): Promise<void> {
-    // Basic check for color contrast considerations
-    const cssFiles = await this.scanner.scanFiles(['**/*.{css,scss,sass}', '!**/node_modules/**']);
-    
-    let hasContrastVariables = false;
-    let lowContrastWarnings = 0;
-    
-    for (const file of cssFiles.slice(0, 20)) { // Check first 20 files
-      try {
-        const content = await this.scanner.readFile(file.path);
-        
-        // Check for contrast-related variables or utilities
-        if (content.includes('contrast') || content.includes('a11y')) {
-          hasContrastVariables = true;
-        }
-        
-        // Very basic check for potentially low contrast (light gray on white)
-        const lightGrayPattern = /color:\s*(#[ef][0-9a-f]{5}|rgba?\(\s*2[0-5]\d)/i;
-        if (lightGrayPattern.test(content)) {
-          lowContrastWarnings++;
-        }
-      } catch (error) {
-        // Error reading file
-      }
-    }
-    
-    metrics.colorContrastIssues = lowContrastWarnings;
-    
-    if (hasContrastVariables) {
-      findings.push({
-        id: 'a11y-contrast-utilities',
-        type: 'success',
-        message: 'Color contrast utilities or variables found',
-        severity: 'low',
-      });
-    }
-    
-    if (lowContrastWarnings > 2) {
-      findings.push({
-        id: 'a11y-potential-contrast-issues',
-        type: 'warning',
-        message: 'Potential color contrast issues detected',
-        severity: 'medium',
-        suggestion: 'Ensure all text meets WCAG AA contrast ratios (4.5:1 for normal text, 3:1 for large text)',
-      });
-    }
-  }
-
-  private generateOverallFindings(findings: Finding[], metrics: any): void {
-    const a11yPercentage = (metrics.componentsWithA11y / metrics.totalComponents) * 100;
-    
-    if (a11yPercentage > 70) {
-      findings.push({
-        id: 'a11y-good-coverage',
-        type: 'success',
-        message: `${a11yPercentage.toFixed(0)}% of components have accessibility features`,
-        severity: 'low',
-      });
-    } else if (a11yPercentage < 30) {
-      findings.push({
-        id: 'a11y-low-coverage',
+        id: 'a11y-no-tooling',
         type: 'error',
-        message: `Only ${a11yPercentage.toFixed(0)}% of components have accessibility features`,
+        message:
+          'No accessibility tooling detected (eslint-plugin-jsx-a11y, jest-axe, axe-core, @storybook/addon-a11y, pa11y, cypress-axe)',
         severity: 'high',
-        suggestion: 'Implement ARIA attributes, keyboard navigation, and screen reader support',
+        suggestion:
+          'Add eslint-plugin-jsx-a11y for static enforcement and jest-axe (or axe in Storybook/Cypress) for rendered-output checks',
       });
     }
 
-    // Check for accessibility documentation
-    if (metrics.filesScanned > 0 && findings.filter(f => f.type === 'success').length > 3) {
+    if (runtimeTools.length === 0 && allTools.length > 0) {
       findings.push({
-        id: 'a11y-overall-good',
-        type: 'info',
-        message: 'Consider documenting accessibility guidelines for your design system',
+        id: 'a11y-no-runtime-testing',
+        type: 'warning',
+        message:
+          'No axe-based runtime accessibility testing detected (jest-axe, axe-core, cypress-axe, pa11y)',
+        severity: 'medium',
+        suggestion: 'Add jest-axe or axe-core assertions so rendered components are verified',
+      });
+    }
+
+    if (lintPlugins.length > 0 && !eslintJsxA11yEnabled) {
+      findings.push({
+        id: 'a11y-lint-not-enabled',
+        type: 'warning',
+        message:
+          'eslint-plugin-jsx-a11y is installed but no eslint config appears to enable it',
+        severity: 'medium',
+        suggestion:
+          'Extend plugin:jsx-a11y/recommended (or add the plugin to your flat config) so the rules actually run',
+      });
+    } else if (eslintJsxA11yEnabled) {
+      findings.push({
+        id: 'a11y-lint-enabled',
+        type: 'success',
+        message: 'jsx-a11y lint rules are enabled in the eslint configuration',
         severity: 'low',
       });
     }
   }
 
-  private calculateScore(findings: Finding[], metrics: any): number {
-    let score = 100;
-
-    // Deduct points based on findings
-    const errors = findings.filter(f => f.type === 'error').length;
-    const warnings = findings.filter(f => f.type === 'warning').length;
-    
-    score -= errors * 15;
-    score -= warnings * 7;
-
-    // Deduct for low accessibility coverage
-    const a11yPercentage = (metrics.componentsWithA11y / Math.max(metrics.totalComponents, 1)) * 100;
-    if (a11yPercentage < 50) {
-      score -= 20;
-    } else if (a11yPercentage < 70) {
-      score -= 10;
+  private generateViolationFindings(
+    findings: Finding[],
+    violations: StaticViolation[],
+    autoFocusCount: number
+  ): void {
+    for (const violation of violations.slice(0, MAX_VIOLATION_FINDINGS)) {
+      findings.push({
+        id: `a11y-${violation.rule}-${violation.path}-${violation.line}`,
+        type: 'warning',
+        message: violation.message,
+        severity: 'medium',
+        path: violation.path,
+        line: violation.line,
+        suggestion: violation.suggestion,
+      });
     }
 
-    // Bonus for good practices
-    const successFindings = findings.filter(f => f.type === 'success').length;
-    score += successFindings * 5;
-
-    // Bonus for semantic HTML
-    if (metrics.semanticHTML > 5) {
-      score += 10;
+    if (violations.length > MAX_VIOLATION_FINDINGS) {
+      findings.push({
+        id: 'a11y-violations-truncated',
+        type: 'info',
+        message: `${violations.length - MAX_VIOLATION_FINDINGS} additional static violations not listed individually (${violations.length} total)`,
+        severity: 'low',
+      });
     }
 
-    return Math.max(0, Math.min(100, score));
-  }
+    if (violations.length === 0) {
+      findings.push({
+        id: 'a11y-no-static-violations',
+        type: 'success',
+        message:
+          'No static JSX violations found (img alt, positive tabIndex, mouse-only click handlers)',
+        severity: 'low',
+      });
+    }
 
-  private getGrade(score: number): string {
-    if (score >= 90) return 'A';
-    if (score >= 80) return 'B';
-    if (score >= 70) return 'C';
-    if (score >= 60) return 'D';
-    return 'F';
+    if (autoFocusCount >= 3) {
+      findings.push({
+        id: 'a11y-autofocus-prevalence',
+        type: 'info',
+        message: `autoFocus used ${autoFocusCount} times — frequent autofocus can disorient screen-reader and keyboard users`,
+        severity: 'low',
+        suggestion: 'Reserve autoFocus for genuinely modal flows; avoid it in reusable components',
+      });
+    }
   }
 }

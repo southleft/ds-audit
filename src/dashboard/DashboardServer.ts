@@ -8,76 +8,32 @@ import { Logger } from '../utils/Logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Removed the problematic findDashboardFile function
-/* function findDashboardFile(filename: string): string | null {
-  
-  // First, let's understand our environment
-  console.log(`[DEBUG] Looking for ${filename}:`);
-  console.log(`[DEBUG] __dirname: ${__dirname}`);
-  console.log(`[DEBUG] __filename: ${__filename}`);
-  console.log(`[DEBUG] process.cwd(): ${process.cwd()}`);
-  // console.log(`[DEBUG] require.main?.filename: ${require.main?.filename}`); // Not available in ES modules
-  
-  // Direct path should work since __dirname is correct
-  const directPath = path.join(__dirname, filename);
-  console.log(`[DEBUG] Direct path: ${directPath}`);
-  
-  try {
-    // Let's check if the file exists at the direct path
-    const stats = fsSync.statSync(directPath);
-    console.log(`[DEBUG] File found! Stats:`, { size: stats.size, isFile: stats.isFile() });
-    return directPath;
-  } catch (e: any) {
-    console.log(`[DEBUG] Direct path failed:`, e.message);
-    console.log(`[DEBUG] Error code:`, e.code);
-  }
-  
-  // If direct path fails, let's check what files ARE in the directory
-  try {
-    const files = fsSync.readdirSync(__dirname);
-    console.log(`[DEBUG] Files in __dirname:`, files);
-  } catch (e: any) {
-    console.log(`[DEBUG] Cannot read __dirname:`, e.message);
-  }
-  
-  // Try alternative paths
-  const possiblePaths = [
-    // Check if somehow we're looking in the wrong place
-    path.resolve(__dirname, filename),
-    // Check parent directories
-    path.join(__dirname, '..', 'dashboard', filename),
-    path.join(__dirname, '..', '..', 'dist', 'dashboard', filename),
-    // Check from project root
-    path.join(process.cwd(), 'dist', 'dashboard', filename)
-  ];
-  
-  console.log(`[DEBUG] Trying alternative paths...`);
-  for (const possiblePath of possiblePaths) {
-    try {
-      const exists = fsSync.existsSync(possiblePath);
-      console.log(`[DEBUG] Checking: ${possiblePath} - ${exists ? 'EXISTS' : 'NOT FOUND'}`);
-      if (exists) {
-        return possiblePath;
-      }
-    } catch (e) {
-      console.log(`[DEBUG] Error checking ${possiblePath}: ${e}`);
-    }
-  }
-  
-  return null;
-} */
+/** Served when the compiled React bundle is missing next to this file. */
+const MISSING_BUILD_PAGE = `<!DOCTYPE html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>dsaudit — dashboard build missing</title></head>
+  <body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; line-height: 1.6;">
+    <h1>Dashboard build missing</h1>
+    <p>The compiled dashboard was not found. Build it with:</p>
+    <pre style="background:#f4f4f5;padding:1rem;border-radius:6px;">npm run build</pre>
+    <p>Then re-run the audit. The JSON results are still available at
+      <a href="/audit/results.json">/audit/results.json</a>.</p>
+  </body>
+</html>`;
 
 export class DashboardServer {
   private config: AuditConfig;
   public results: AuditResult;
   private app: express.Application;
   private logger: Logger;
-  private server: any;
+  private server: ReturnType<express.Application['listen']> | undefined;
   public progressClients: Set<express.Response> = new Set();
   // Event buffer for replaying missed events to late-connecting clients
-  private eventBuffer: Array<{ data: any; timestamp: number }> = [];
+  private eventBuffer: Array<{ data: unknown; timestamp: number }> = [];
   private readonly MAX_BUFFER_SIZE = 50;
   private readonly EVENT_EXPIRY_MS = 60000; // 1 minute
+  private routesReady: Promise<void>;
+  private auditRunning = false;
 
   constructor(config: AuditConfig, results: AuditResult) {
     this.config = config;
@@ -85,14 +41,19 @@ export class DashboardServer {
     this.app = express();
     this.logger = new Logger();
     this.setupMiddleware();
-    this.setupRoutes().catch(err => {
+    this.routesReady = this.setupRoutes().catch(err => {
       this.logger.error(`Failed to setup routes: ${err}`);
     });
   }
 
-  private async fileExists(path: string): Promise<boolean> {
+  /** Directory the report generator writes into: `<projectPath>/<outputPath>`. */
+  private outputDir(): string {
+    return path.join(this.config.projectPath, this.config.outputPath || 'audit');
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
     try {
-      await fs.access(path);
+      await fs.access(filePath);
       return true;
     } catch {
       return false;
@@ -101,58 +62,37 @@ export class DashboardServer {
 
   private async loadLatestResults(): Promise<void> {
     try {
-      // Try to load results from the audit directory
-      const resultsPath = path.join(this.config.projectPath, 'audit', 'results.json');
+      const resultsPath = path.join(this.outputDir(), 'results.json');
       if (await this.fileExists(resultsPath)) {
         const content = await fs.readFile(resultsPath, 'utf-8');
         const diskResults = JSON.parse(content) as AuditResult;
-        
-        // Always prefer disk results when available - they are the source of truth
+        // Disk results are the source of truth when available
         this.logger.info(`Loading results from disk (${diskResults.timestamp})`);
         this.results = diskResults;
-      } else {
-        // Also try the current working directory's audit folder
-        const cwdResultsPath = path.join(process.cwd(), 'audit', 'results.json');
-        if (await this.fileExists(cwdResultsPath)) {
-          const content = await fs.readFile(cwdResultsPath, 'utf-8');
-          const diskResults = JSON.parse(content) as AuditResult;
-          this.logger.info(`Loading results from current directory (${diskResults.timestamp})`);
-          this.results = diskResults;
-        }
       }
     } catch (error) {
       this.logger.warn(`Could not load results from disk: ${error}`);
-      // Continue with the results passed to constructor
+      // Continue with the in-memory results
     }
   }
 
   private setupMiddleware(): void {
-    this.app.use(express.json({ limit: '1mb' })); // Increase payload limit for chat
-    // Serve static files if we add them later
+    this.app.use(express.json());
   }
 
   private async setupRoutes(): Promise<void> {
     // API endpoints
     this.app.get('/api/results', async (req, res) => {
-      // Add headers to prevent caching
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
-      
-      // Only load from disk on initial request or if explicitly requested
+
       if (req.query.refresh === 'true') {
         await this.loadLatestResults();
       }
       res.json(this.results);
     });
 
-    this.app.get('/api/config', (req, res) => {
-      res.json({
-        projectPath: this.config.projectPath,
-        modules: this.config.modules,
-      });
-    });
-    
     // Server-Sent Events endpoint for progress updates
     this.app.get('/api/progress', (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -163,7 +103,6 @@ export class DashboardServer {
       // Send initial connection message
       res.write('data: {"type": "connected"}\n\n');
 
-      // Add client to the set
       this.progressClients.add(res);
       this.logger.info(`Client connected. Total clients: ${this.progressClients.size}`);
 
@@ -175,13 +114,13 @@ export class DashboardServer {
         validEvents.forEach(event => {
           try {
             res.write(`data: ${JSON.stringify(event.data)}\n\n`);
-          } catch (error) {
+          } catch {
             // Ignore write errors during replay
           }
         });
       }
 
-      // Send heartbeat to keep connection alive
+      // Heartbeat to keep the connection alive
       const heartbeat = setInterval(() => {
         try {
           res.write(': heartbeat\n\n');
@@ -190,7 +129,6 @@ export class DashboardServer {
         }
       }, 30000);
 
-      // Remove client on disconnect
       req.on('close', () => {
         clearInterval(heartbeat);
         this.progressClients.delete(res);
@@ -198,261 +136,241 @@ export class DashboardServer {
       });
     });
 
-    // Chat API endpoint
-    this.app.post('/api/chat', async (req, res) => {
-      try {
-        const { message, context } = req.body;
-        
-        // Load API key from .env file
-        let apiKey = this.config.ai?.apiKey;
-        if (!apiKey) {
-          // Try to load from .env file
-          const envPath = path.join(this.config.projectPath, '.env');
-          try {
-            const { default: dotenv } = await import('dotenv');
-            const envContent = await fs.readFile(envPath, 'utf-8');
-            const parsed = dotenv.parse(envContent);
-            apiKey = parsed.ANTHROPIC_API_KEY;
-            this.logger.info(`Loaded API key from .env: ${apiKey ? 'Found (length: ' + apiKey.length + ')' : 'Not found'}`);
-          } catch (error) {
-            this.logger.warn(`Could not load .env file for API key: ${error}`);
-          }
-        } else {
-          this.logger.info(`Using API key from config: ${apiKey ? 'Found (length: ' + apiKey.length + ')' : 'Not found'}`);
-        }
-        
-        // Check if AI is configured
-        if (!this.config.ai?.enabled || !apiKey) {
-          res.status(503).json({ 
-            error: 'AI service not configured',
-            response: 'AI chat requires an API key to be configured. Please ensure you have ANTHROPIC_API_KEY set in your .env file.'
-          });
-          return;
-        }
-        
-        // Validate API key format
-        if (apiKey && !apiKey.startsWith('sk-ant-')) {
-          this.logger.warn(`Invalid API key format detected. Key starts with: ${apiKey.substring(0, 10)}`);
-          res.status(503).json({ 
-            error: 'Invalid API key format',
-            response: `The API key appears to be invalid. Anthropic API keys must start with 'sk-ant-api...'. Your key starts with '${apiKey.substring(0, 10)}...' which appears to be an OpenAI key format. Please update your .env file with a valid Anthropic API key.`
-          });
-          return;
-        }
-        
-        // Create AIService instance to handle the chat
-        const { AIService } = await import('../core/AIService.js');
-        const aiService = new AIService(apiKey, this.config.ai?.model || 'claude-sonnet-4-20250514');
-        
-        // Generate contextual response using Claude API
-        const response = await aiService.generateChatResponse(message, context, this.results);
-        
-        res.json({ response });
-      } catch (error: any) {
-        this.logger.error(`Chat API error: ${error}`);
-        res.status(500).json({ 
-          error: 'Internal server error',
-          response: 'I apologize, but I encountered an error processing your request. Please try again later.'
-        });
-      }
-    });
-
-    // Start audit API endpoint
+    // Start a new audit from the dashboard
     this.app.post('/api/start-audit', async (req, res) => {
+      if (this.auditRunning) {
+        res.status(409).json({
+          error: 'Audit already running',
+          message: 'An audit is already in progress. Watch the Live Progress view for updates.',
+        });
+        return;
+      }
+
       try {
         this.logger.info('Starting new audit via API...');
-        
-        // Import AuditEngine
+
         const { AuditEngine } = await import('../core/AuditEngine.js');
-        
-        // Create new audit engine with current config
         const engine = new AuditEngine(this.config);
-        
-        // Set up progress tracking
+
+        // Derived from the config, never hardcoded
+        const totalCategories = Object.values(this.config.modules).filter(Boolean).length;
         let completedCount = 0;
-        const totalCategories = 7; // Known number of categories
-        
+
         engine.on('audit:start', () => {
           completedCount = 0;
-          this.sendProgressUpdate({ type: 'audit:start', progress: 0 });
-        });
-        
-        engine.on('category:start', (categoryId) => {
-          this.sendProgressUpdate({ 
-            type: 'category:start', 
-            category: categoryId,
-            progress: Math.round((completedCount / totalCategories) * 100)
+          this.sendProgressUpdate({
+            type: 'audit:start',
+            totalCategories,
+            progress: 0,
+            message: 'Starting design system audit...',
           });
         });
-        
+
+        engine.on('category:start', categoryId => {
+          this.sendProgressUpdate({
+            type: 'category:start',
+            category: categoryId,
+            progress: Math.round((completedCount / totalCategories) * 100),
+            message: `Auditing ${categoryId}...`,
+          });
+        });
+
         engine.on('category:complete', (categoryId, result) => {
           completedCount++;
-          this.sendProgressUpdate({ 
-            type: 'category:complete', 
+          this.sendProgressUpdate({
+            type: 'category:complete',
             category: categoryId,
             result,
-            progress: Math.round((completedCount / totalCategories) * 100)
+            progress: Math.round((completedCount / totalCategories) * 100),
+            message: `Completed ${categoryId} (Score: ${result.score})`,
           });
         });
-        
-        engine.on('audit:complete', (result) => {
-          this.results = result; // Update stored results
-          this.sendProgressUpdate({ type: 'audit:complete', progress: 100, result });
+
+        engine.on('category:error', (categoryId, error) => {
+          completedCount++;
+          this.sendProgressUpdate({
+            type: 'category:error',
+            category: categoryId,
+            error: error instanceof Error ? error.message : String(error),
+            progress: Math.round((completedCount / totalCategories) * 100),
+          });
         });
-        
-        // Start audit in background
-        engine.run().catch(error => {
-          this.logger.error(`Audit failed: ${error}`);
-          this.sendProgressUpdate({ type: 'audit:error', error: error.message });
+
+        // AI judge phase — forwarded so the client can show a review phase
+        engine.on('ai:start', () => {
+          this.sendProgressUpdate({ type: 'ai:start', message: 'AI judge review started...' });
         });
-        
-        res.json({ 
-          success: true, 
-          message: 'Audit started successfully. Check progress page for updates.' 
+
+        engine.on('ai:category', categoryId => {
+          this.sendProgressUpdate({
+            type: 'ai:category',
+            category: categoryId,
+            message: `AI judge reviewing ${categoryId}...`,
+          });
         });
-        
-      } catch (error: any) {
-        this.logger.error(`Failed to start audit: ${error}`);
-        res.status(500).json({ 
-          error: 'Failed to start audit',
-          message: error.message 
+
+        engine.on('ai:complete', () => {
+          this.sendProgressUpdate({ type: 'ai:complete', message: 'AI judge review complete' });
         });
+
+        engine.on('ai:error', error => {
+          this.sendProgressUpdate({
+            type: 'ai:error',
+            error: error instanceof Error ? error.message : String(error),
+            message: 'AI judge review failed — scores are deterministic only',
+          });
+        });
+
+        engine.on('audit:complete', result => {
+          this.results = result;
+        });
+
+        // Run in the background; persist reports so disk stays in sync
+        this.auditRunning = true;
+        engine
+          .run()
+          .then(async result => {
+            try {
+              const { ReportGenerator } = await import('../core/ReportGenerator.js');
+              await new ReportGenerator(this.config).generate(result);
+            } catch (reportError) {
+              this.logger.warn(`Report generation failed: ${reportError}`);
+            }
+            this.sendProgressUpdate({
+              type: 'audit:complete',
+              progress: 100,
+              result,
+              message: 'Audit completed successfully!',
+            });
+          })
+          .catch(error => {
+            this.logger.error(`Audit failed: ${error}`);
+            this.sendProgressUpdate({
+              type: 'audit:error',
+              error: error instanceof Error ? error.message : String(error),
+            });
+          })
+          .finally(() => {
+            this.auditRunning = false;
+          });
+
+        res.json({
+          success: true,
+          totalCategories,
+          message: 'Audit started. Watch the Live Progress view for updates.',
+        });
+      } catch (error) {
+        this.auditRunning = false;
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to start audit: ${message}`);
+        res.status(500).json({ error: 'Failed to start audit', message });
       }
     });
 
-    // Audit file routes
+    // Generated audit files (written by ReportGenerator into the output dir)
     this.app.get('/audit/report.md', async (req, res) => {
       try {
-        const projectPath = this.config.projectPath || process.cwd();
-        const reportPath = path.join(projectPath, 'dsaudit-report.md');
-        
+        const reportPath = path.join(this.outputDir(), 'report.md');
         if (await this.fileExists(reportPath)) {
           const content = await fs.readFile(reportPath, 'utf-8');
           res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
           res.send(content);
         } else {
-          res.status(404).send('Markdown report not found. Run an audit first to generate the report.');
+          res
+            .status(404)
+            .send('Markdown report not found. Run an audit first to generate the report.');
         }
-      } catch (error: any) {
-        this.logger.error(`Error serving markdown report: ${error.message}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Error serving markdown report: ${message}`);
         res.status(500).send('Error loading markdown report');
       }
     });
 
     this.app.get('/audit/results.json', (req, res) => {
-      try {
-        res.setHeader('Content-Type', 'application/json');
-        res.json(this.results);
-      } catch (error: any) {
-        this.logger.error(`Error serving JSON results: ${error.message}`);
-        res.status(500).json({ error: 'Error loading JSON results' });
-      }
+      res.setHeader('Content-Type', 'application/json');
+      res.json(this.results);
     });
 
-    // Check if React build exists
-    const reactBuildPath = path.join(__dirname, 'index.html');
-    const useReactApp = await this.fileExists(reactBuildPath);
+    // React app (built by vite into dist/dashboard/app) — or an honest error
+    // page when the build is missing
+    const reactBuildDir = path.join(__dirname, 'app');
+    const reactBuildPath = path.join(reactBuildDir, 'index.html');
+    const hasReactBuild = await this.fileExists(reactBuildPath);
 
-    if (useReactApp) {
-      // Serve React app static files with proper headers
-      this.app.use(express.static(__dirname, {
-        maxAge: '1d',
-        setHeaders: (res, filePath) => {
-          if (filePath.endsWith('.css')) {
-            res.setHeader('Content-Type', 'text/css');
-          } else if (filePath.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript');
-          }
-        }
-      }));
-      
-      // Catch-all for React SPA (must be last after all other routes)
+    if (hasReactBuild) {
+      this.app.use(
+        express.static(reactBuildDir, {
+          maxAge: '1d',
+          setHeaders: (res, filePath) => {
+            if (filePath.endsWith('.css')) {
+              res.setHeader('Content-Type', 'text/css');
+            } else if (filePath.endsWith('.js')) {
+              res.setHeader('Content-Type', 'application/javascript');
+            }
+          },
+        })
+      );
+
+      // SPA catch-all (must come after API routes)
       this.app.use(async (req, res, next) => {
-        // Skip API routes - they should be handled above
         if (req.path.startsWith('/api/')) {
           return next();
         }
-        
         try {
           const html = await fs.readFile(reactBuildPath, 'utf-8');
           res.send(html);
-        } catch (error: any) {
-          this.logger.error(`Error serving React app: ${error.message}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Error serving React app: ${message}`);
           res.status(500).send('Error loading dashboard');
         }
       });
     } else {
-      // Fall back to legacy dashboard
-      this.app.get('/dashboard.js', async (req, res) => {
-        try {
-          const jsPath = path.join(__dirname, 'dashboard-sidebar.js');
-          const js = await fs.readFile(jsPath, 'utf-8');
-          res.type('application/javascript').send(js);
-        } catch (error: any) {
-          this.logger.error(`Error loading dashboard script: ${error.message}`);
-          res.status(500).send('Error loading dashboard script');
+      this.app.use((req, res, next) => {
+        if (req.path.startsWith('/api/') || req.path.startsWith('/audit/')) {
+          return next();
         }
-      });
-      
-      this.app.get('/dashboard-sidebar.js', async (req, res) => {
-        try {
-          const jsPath = path.join(__dirname, 'dashboard-sidebar.js');
-          const js = await fs.readFile(jsPath, 'utf-8');
-          res.type('application/javascript').send(js);
-        } catch (error: any) {
-          this.logger.error(`Error loading sidebar dashboard script: ${error.message}`);
-          res.status(500).send('Error loading dashboard script');
-        }
-      });
-
-      this.app.get('/', async (req, res) => {
-        try {
-          const htmlPath = path.join(__dirname, 'dashboard-sidebar.html');
-          const html = await fs.readFile(htmlPath, 'utf-8');
-          res.send(html);
-        } catch (error: any) {
-          this.logger.error(`Error loading dashboard HTML: ${error.message}`);
-          res.status(500).send(`
-            <html>
-              <body>
-                <h1>Dashboard Loading Error</h1>
-                <p>Unable to load dashboard files.</p>
-                <pre>${error.message}</pre>
-              </body>
-            </html>
-          `);
-        }
+        res.status(503).send(MISSING_BUILD_PAGE);
       });
     }
   }
 
   async start(): Promise<void> {
-    return new Promise((resolve) => {
-      this.server = this.app.listen(this.config.dashboard.port, () => {
-        this.logger.success(`Dashboard running at http://localhost:${this.config.dashboard.port}`);
-        
-        // Don't auto-open here - let the init command handle it
-        // if (this.config.dashboard.autoOpen) {
-        //   this.openBrowser(`http://localhost:${this.config.dashboard.port}`);
-        // }
-        
-        resolve();
+    await this.routesReady;
+    const port = this.config.dashboard.port;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      this.server = this.app.listen(port, () => {
+        // Don't resolve immediately: on some platforms a conflicting bind
+        // emits 'listening' first and 'error' (EADDRINUSE) a tick later.
+        setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            this.logger.success(`Dashboard running at http://localhost:${port}`);
+            resolve();
+          }
+        }, 100);
+      });
+
+      this.server.on('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'EADDRINUSE') {
+          this.logger.error(
+            `Port ${port} is already in use — pass a different port in config.dashboard.port ` +
+              `(.dsaudit.json) or stop the process using it.`
+          );
+        } else {
+          this.logger.error(`Dashboard server error: ${error.message}`);
+        }
+        this.server?.close();
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
       });
     });
-  }
-
-
-  private async openBrowser(url: string): Promise<void> {
-    const { spawn } = await import('child_process');
-    const start = process.platform === 'darwin' ? 'open' :
-                  process.platform === 'win32' ? 'start' : 'xdg-open';
-
-    // Use spawn to avoid command injection - pass URL as separate argument
-    if (process.platform === 'win32') {
-      spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' });
-    } else {
-      spawn(start, [url], { detached: true, stdio: 'ignore' });
-    }
   }
 
   stop(): void {
@@ -466,19 +384,16 @@ export class DashboardServer {
     this.progressClients.clear();
   }
 
-  // Method to send progress updates to all connected clients
-  sendProgressUpdate(data: any): void {
+  /** Broadcast a progress event to all connected SSE clients. */
+  sendProgressUpdate(data: { type: string; [key: string]: unknown }): void {
     this.logger.info(`Sending progress update: ${data.type} to ${this.progressClients.size} clients`);
 
     // Buffer the event for late-connecting clients
     this.eventBuffer.push({ data, timestamp: Date.now() });
-
-    // Trim buffer if too large (keep most recent events)
     if (this.eventBuffer.length > this.MAX_BUFFER_SIZE) {
       this.eventBuffer = this.eventBuffer.slice(-this.MAX_BUFFER_SIZE);
     }
-
-    // Clear buffer when audit completes (or starts fresh)
+    // A new audit invalidates prior events
     if (data.type === 'audit:start') {
       this.eventBuffer = [{ data, timestamp: Date.now() }];
     }
@@ -487,53 +402,9 @@ export class DashboardServer {
     this.progressClients.forEach(client => {
       try {
         client.write(message);
-      } catch (error) {
-        // Remove dead connections
+      } catch {
         this.progressClients.delete(client);
       }
     });
-  }
-  
-  private generateContextualResponse(message: string, context: any): string {
-    const lowerMessage = message.toLowerCase();
-    
-    // Check for score-related questions
-    if (lowerMessage.includes('score') || lowerMessage.includes('grade')) {
-      return `Your design system has an overall score of ${context.overallScore}/100. Here's the breakdown by category:\n\n${
-        context.categories.map((c: any) => `• ${c.name}: ${c.score}/100`).join('\n')
-      }\n\nThe areas that need the most attention are those with scores below 60. Would you like specific recommendations for improving any particular category?`;
-    }
-    
-    // Check for recommendation questions
-    if (lowerMessage.includes('recommend') || lowerMessage.includes('improve') || lowerMessage.includes('fix')) {
-      return `Based on your audit results, here are the top recommendations:\n\n${
-        context.topRecommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join('\n')
-      }\n\nFocus on the lowest-scoring categories first for the biggest impact. Would you like detailed steps for any of these recommendations?`;
-    }
-    
-    // Check for specific category questions
-    const categoryNames = context.categories.map((c: any) => c.name.toLowerCase());
-    const mentionedCategory = categoryNames.find((name: string) => lowerMessage.includes(name));
-    
-    if (mentionedCategory) {
-      const category = context.categories.find((c: any) => c.name.toLowerCase() === mentionedCategory);
-      return `The ${category.name} category scored ${category.score}/100 with ${category.findings} findings.\n\nThis category evaluates ${this.getCategoryDescription(category.name)}.\n\nWould you like specific action items to improve this score?`;
-    }
-    
-    // Default response
-    return `I can help you understand your design system audit results. You can ask me about:\n\n• Your overall score and grades\n• Specific category scores and what they mean\n• Recommendations for improvement\n• Best practices for design systems\n• How to prioritize fixes\n\nWhat would you like to know more about?`;
-  }
-  
-  private getCategoryDescription(name: string): string {
-    const descriptions: Record<string, string> = {
-      'Component Library': 'the structure, organization, and quality of your component library including TypeScript support, testing coverage, and documentation',
-      'Design Tokens': 'your design token architecture, semantic naming, theming support, and integration with design tools',
-      'Documentation': 'the completeness and quality of your documentation including API docs, usage examples, and contribution guidelines',
-      'Governance': 'your versioning strategy, contribution process, code review practices, and design system team structure',
-      'Tooling': 'your build setup, linting configuration, development environment, and CI/CD integration',
-      'Performance': 'bundle sizes, build times, runtime performance, and optimization strategies',
-      'Accessibility': 'ARIA compliance, keyboard navigation, screen reader support, and inclusive design practices'
-    };
-    return descriptions[name] || 'various aspects of your design system';
   }
 }

@@ -31,7 +31,11 @@ Thumbs.db
 # Audit output (if users don't want to track audit results)
 audit-logs/
 audit/
+example-design-system/audit/
 output/
+
+# Local Claude Code hooks (user-specific)
+/hooks/
 
 # Configuration files (user-specific)
 .dsaudit.json
@@ -58,3 +62,6 @@ test-*.sh
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+# Playwright CLI test artifacts
+.playwright-cli/

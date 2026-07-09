@@ -1,11 +1,38 @@
 import { promises as fs } from 'fs';
-import path from 'path';
 import type { AuditConfig, CategoryResult, Finding } from '../types/index.js';
 import { FileScanner } from '../utils/FileScanner.js';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+interface PackagingSignals {
+  /** Fraction (0-1) of evaluated packages that declare each field. */
+  sideEffects: number;
+  exportsMap: number;
+  esmEntry: number;
+  typesField: number;
+  filesAllowlist: number;
+  packagesEvaluated: number;
+}
+
+interface BuiltEntry {
+  path: string;
+  size: number;
+  type: 'javascript' | 'css';
+}
+
+/**
+ * Runtime dependencies that are known bundle-size hazards when shipped in a
+ * library's `dependencies`. Each entry has a reason so the finding is
+ * explainable, not a blanket judgement.
+ */
+const HEAVY_RUNTIME_DEPS: Record<string, string> = {
+  moment: 'moment is large and not tree-shakeable; prefer dayjs or date-fns',
+  lodash: 'lodash (CJS) defeats tree shaking; prefer lodash-es or per-method imports',
+  jquery: 'jquery in a component library dependency forces it onto every consumer',
+  'core-js': 'core-js in dependencies polyfills globally in every consuming app; let consumers own polyfills',
+  '@fortawesome/fontawesome-free': 'full icon packs ship every icon; prefer per-icon imports',
+};
+
+const LARGE_ENTRY_BYTES = 300 * 1024; // single built entry worth flagging
+const VERY_LARGE_ENTRY_BYTES = 1024 * 1024;
 
 export class PerformanceAuditor {
   private config: AuditConfig;
@@ -18,326 +45,393 @@ export class PerformanceAuditor {
 
   async audit(): Promise<CategoryResult> {
     const findings: Finding[] = [];
-    const metrics: Record<string, any> = {
-      filesScanned: 0,
-      bundleSize: 0,
-      imageOptimization: {},
-      buildTime: 0,
-    };
 
-    // Check for build configuration
-    const buildConfig = await this.analyzeBuildConfig();
-    metrics.buildConfig = buildConfig;
+    const packaging = await this.analyzePackaging();
+    const heavyDeps = await this.findHeavyRuntimeDeps();
+    const built = await this.analyzeBuiltOutput();
 
-    // Analyze bundle sizes
-    const bundleAnalysis = await this.analyzeBundleSize();
-    metrics.bundleSize = bundleAnalysis.totalSize;
-    metrics.bundles = bundleAnalysis.bundles;
+    this.generatePackagingFindings(findings, packaging);
+    this.generateHeavyDepFindings(findings, heavyDeps);
+    this.generateBuiltOutputFindings(findings, built);
+    this.generateCssStrategyFindings(findings, built.entries);
 
-    // Check for image optimization
-    const imageAnalysis = await this.analyzeImages();
-    metrics.imageOptimization = imageAnalysis;
+    // Score formula for design-system LIBRARIES (documented so the number is
+    // defensible). We measure how well the package is prepared for consuming
+    // bundlers — not app-style metrics like code splitting.
+    //
+    //   packagingPts (0-70), each scaled by the fraction of evaluated
+    //   (library-shaped, non-private) packages declaring the field:
+    //     sideEffects declared ......... 20
+    //     exports map .................. 15
+    //     ESM entry (module field, type:module, or exports import cond) ... 15
+    //     types/typings field .......... 10
+    //     files allowlist .............. 10
+    //   depsPts (0-15): 15 minus 5 per distinct heavy runtime dependency
+    //     (moment, CJS lodash, jquery, core-js, full icon packs), floor 0.
+    //   sizePts (0-15), only when built output exists: 15 minus 5 per JS
+    //     entry >300KB, minus another 5 if any entry >1MB, floor 0.
+    //
+    //   With built output:    score = packagingPts + depsPts + sizePts
+    //   Without built output: score = round((packagingPts + depsPts) / 85 * 100)
+    //     and an 'info' finding states that size checks need a build.
+    const packagingPts =
+      packaging.packagesEvaluated === 0
+        ? 0
+        : Math.round(
+            20 * packaging.sideEffects +
+              15 * packaging.exportsMap +
+              15 * packaging.esmEntry +
+              10 * packaging.typesField +
+              10 * packaging.filesAllowlist
+          );
+    const depsPts = Math.max(0, 15 - heavyDeps.length * 5);
 
-    // Check for code splitting
-    await this.checkCodeSplitting(findings);
+    let sizePts = 0;
+    let score: number;
+    if (built.hasBuildOutput) {
+      const largeEntries = built.entries.filter(
+        e => e.type === 'javascript' && e.size > LARGE_ENTRY_BYTES
+      );
+      const hasVeryLarge = built.entries.some(
+        e => e.type === 'javascript' && e.size > VERY_LARGE_ENTRY_BYTES
+      );
+      sizePts = Math.max(0, 15 - largeEntries.length * 5 - (hasVeryLarge ? 5 : 0));
+      score = packagingPts + depsPts + sizePts;
+    } else {
+      score = Math.round(((packagingPts + depsPts) / 85) * 100);
+      findings.push({
+        id: 'perf-no-build-output',
+        type: 'info',
+        message:
+          'Insufficient signal for size analysis — no dist/build/lib output found. Build the package to enable per-entry size checks.',
+        severity: 'low',
+        suggestion: 'Run the build and re-audit to include built entry sizes in the score',
+      });
+    }
 
-    // Check for tree shaking
-    await this.checkTreeShaking(findings, buildConfig);
+    const hasAnyPackagingSignal =
+      packaging.packagesEvaluated > 0 &&
+      (packaging.sideEffects > 0 ||
+        packaging.exportsMap > 0 ||
+        packaging.esmEntry > 0 ||
+        packaging.typesField > 0 ||
+        packaging.filesAllowlist > 0);
 
-    // Generate findings based on analysis
-    this.generateFindings(findings, metrics, bundleAnalysis, imageAnalysis);
-
-    const score = this.calculateScore(findings, metrics);
+    if (!built.hasBuildOutput && !hasAnyPackagingSignal) {
+      findings.push({
+        id: 'perf-insufficient-signal',
+        type: 'info',
+        message:
+          'Neither built output nor library packaging fields (sideEffects, exports, module, types, files) were found — the performance score reflects packaging fields only and is necessarily low',
+        severity: 'low',
+      });
+    }
 
     return {
       id: 'performance',
       name: 'Performance',
-      score,
-      grade: this.getGrade(score),
-      weight: 0.10,
+      score: Math.max(0, Math.min(100, score)),
+      grade: '', // stamped by the engine
+      weight: 0, // stamped by the engine
       findings,
-      metrics,
+      metrics: {
+        filesScanned: built.entries.length,
+        hasBuildOutput: built.hasBuildOutput,
+        packaging: {
+          sideEffects: packaging.sideEffects,
+          exportsMap: packaging.exportsMap,
+          esmEntry: packaging.esmEntry,
+          typesField: packaging.typesField,
+          filesAllowlist: packaging.filesAllowlist,
+          packagesEvaluated: packaging.packagesEvaluated,
+        },
+        largestEntries: built.entries
+          .slice()
+          .sort((a, b) => b.size - a.size)
+          .slice(0, 5)
+          .map(e => ({ path: e.path, sizeKB: Math.round(e.size / 1024) })),
+        heavyDependencies: heavyDeps,
+        scoreBreakdown: {
+          packaging: packagingPts,
+          dependencies: depsPts,
+          buildOutput: built.hasBuildOutput ? sizePts : null,
+        },
+      },
     };
   }
 
-  private async analyzeBuildConfig(): Promise<any> {
-    const config: any = {
-      webpack: false,
-      vite: false,
-      rollup: false,
-      parcel: false,
-      optimizations: [],
-    };
+  /**
+   * Evaluate packaging fields on every library-shaped, non-private
+   * package.json (root and workspaces). "Library-shaped" means it declares an
+   * entry point (main/module/exports). If none qualify, fall back to the root
+   * package.json so single-package repos are still evaluated.
+   */
+  private async analyzePackaging(): Promise<PackagingSignals> {
+    const packageFiles = await this.scanner.scanFiles([
+      '**/package.json',
+      '!**/node_modules/**',
+      '!**/dist/**',
+      '!**/build/**',
+    ]);
 
-    // Check for webpack
-    if (await this.scanner.fileExists('webpack.config.js')) {
-      config.webpack = true;
+    const packages: any[] = [];
+    for (const file of packageFiles) {
       try {
-        const content = await this.scanner.readFile('webpack.config.js');
-        if (content.includes('optimization')) {
-          config.optimizations.push('webpack-optimization');
-        }
-        if (content.includes('splitChunks')) {
-          config.optimizations.push('code-splitting');
-        }
-      } catch (error) {
-        // Error reading webpack config
+        packages.push(JSON.parse(await this.scanner.readFile(file.path)));
+      } catch {
+        // Unparseable — skip
       }
     }
 
-    // Check for Vite
-    if (await this.scanner.fileExists('vite.config.js') || await this.scanner.fileExists('vite.config.ts')) {
-      config.vite = true;
-      config.optimizations.push('vite-optimization');
+    let candidates = packages.filter(
+      pkg => !pkg.private && (pkg.main || pkg.module || pkg.exports)
+    );
+    if (candidates.length === 0) {
+      const root = packages.find(pkg => pkg.name);
+      candidates = root ? [root] : [];
     }
 
-    // Check for package.json build scripts
-    try {
-      const packageJson = JSON.parse(await this.scanner.readFile('package.json'));
-      if (packageJson.scripts?.build) {
-        config.hasBuildScript = true;
-        if (packageJson.scripts.build.includes('--production')) {
-          config.optimizations.push('production-build');
-        }
-      }
-    } catch (error) {
-      // Error reading package.json
-    }
-
-    return config;
-  }
-
-  private async analyzeBundleSize(): Promise<any> {
-    const bundles: any[] = [];
-    let totalSize = 0;
-
-    // Look for build output directories
-    const buildDirs = ['dist', 'build', 'out', '.next'];
-    
-    for (const dir of buildDirs) {
-      if (await this.scanner.fileExists(dir)) {
-        try {
-          const files = await this.scanner.scanFiles(`${dir}/**/*.{js,css}`);
-          
-          for (const file of files) {
-            const stats = await fs.stat(file.absolutePath);
-            const bundle = {
-              path: file.path,
-              size: stats.size,
-              type: file.extension === '.js' ? 'javascript' : 'css',
-              gzipSize: await this.estimateGzipSize(stats.size),
-            };
-            bundles.push(bundle);
-            totalSize += stats.size;
-          }
-        } catch (error) {
-          // Error scanning build directory
-        }
-      }
-    }
+    const frac = (predicate: (pkg: any) => boolean): number =>
+      candidates.length === 0
+        ? 0
+        : candidates.filter(predicate).length / candidates.length;
 
     return {
-      totalSize,
-      bundles: bundles.sort((a, b) => b.size - a.size),
+      sideEffects: frac(pkg => pkg.sideEffects !== undefined),
+      exportsMap: frac(pkg => pkg.exports !== undefined),
+      esmEntry: frac(
+        pkg =>
+          pkg.module !== undefined ||
+          pkg.type === 'module' ||
+          this.exportsHasImportCondition(pkg.exports)
+      ),
+      typesField: frac(
+        pkg =>
+          pkg.types !== undefined ||
+          pkg.typings !== undefined ||
+          this.exportsHasTypesCondition(pkg.exports)
+      ),
+      filesAllowlist: frac(pkg => Array.isArray(pkg.files) && pkg.files.length > 0),
+      packagesEvaluated: candidates.length,
     };
   }
 
-  private async analyzeImages(): Promise<any> {
-    const imageFiles = await this.scanner.scanFiles('**/*.{png,jpg,jpeg,gif,svg,webp}');
-    const analysis: {
-      totalImages: number;
-      totalSize: number;
-      largeImages: Array<{ path: string; size: number }>;
-      unoptimizedFormats: number;
-    } = {
-      totalImages: imageFiles.length,
-      totalSize: 0,
-      largeImages: [],
-      unoptimizedFormats: 0,
-    };
+  private exportsHasImportCondition(exportsField: unknown): boolean {
+    if (!exportsField || typeof exportsField !== 'object') return false;
+    return JSON.stringify(exportsField).includes('"import"');
+  }
 
-    for (const file of imageFiles) {
+  private exportsHasTypesCondition(exportsField: unknown): boolean {
+    if (!exportsField || typeof exportsField !== 'object') return false;
+    return JSON.stringify(exportsField).includes('"types"');
+  }
+
+  /** Heavy deps only count when in `dependencies` — devDependencies are fine. */
+  private async findHeavyRuntimeDeps(): Promise<string[]> {
+    const packageFiles = await this.scanner.scanFiles([
+      '**/package.json',
+      '!**/node_modules/**',
+    ]);
+
+    const heavy = new Set<string>();
+    for (const file of packageFiles) {
       try {
-        const stats = await fs.stat(file.absolutePath);
-        analysis.totalSize += stats.size;
-        
-        // Flag large images (> 200KB)
-        if (stats.size > 200 * 1024) {
-          analysis.largeImages.push({
+        const pkg = JSON.parse(await this.scanner.readFile(file.path));
+        const deps = pkg.dependencies || {};
+        for (const dep of Object.keys(HEAVY_RUNTIME_DEPS)) {
+          if (deps[dep]) {
+            // lodash is only a hazard when lodash-es isn't the actual import path
+            if (dep === 'lodash' && deps['lodash-es']) continue;
+            heavy.add(dep);
+          }
+        }
+      } catch {
+        // skip
+      }
+    }
+    return Array.from(heavy);
+  }
+
+  /** Measure real built entry sizes; never estimate or fabricate. */
+  private async analyzeBuiltOutput(): Promise<{
+    hasBuildOutput: boolean;
+    entries: BuiltEntry[];
+  }> {
+    const entries: BuiltEntry[] = [];
+    let hasBuildOutput = false;
+
+    for (const dir of ['dist', 'build', 'lib']) {
+      if (!(await this.scanner.fileExists(dir))) continue;
+
+      const files = await this.scanner.scanFiles([`${dir}/**/*.{js,mjs,cjs,css}`]);
+      if (files.length > 0) hasBuildOutput = true;
+
+      for (const file of files) {
+        // Skip sourcemap-adjacent noise; measure the shipped artifact itself.
+        try {
+          const stats = await fs.stat(file.absolutePath);
+          entries.push({
             path: file.path,
             size: stats.size,
+            type: file.extension === '.css' ? 'css' : 'javascript',
           });
+        } catch {
+          // stat failed — skip
         }
-        
-        // Check for unoptimized formats
-        if (file.extension === '.png' || file.extension === '.jpg') {
-          analysis.unoptimizedFormats++;
-        }
-      } catch (error) {
-        // Error analyzing image
       }
     }
 
-    return analysis;
+    return { hasBuildOutput, entries };
   }
 
-  private async checkCodeSplitting(findings: Finding[]): Promise<void> {
-    // Check for dynamic imports in code
-    const jsFiles = await this.scanner.scanFiles('**/*.{js,jsx,ts,tsx}');
-    let hasDynamicImports = false;
-    
-    for (const file of jsFiles.slice(0, 20)) { // Check first 20 files
-      try {
-        const content = await this.scanner.readFile(file.path);
-        if (content.includes('import(') || content.includes('React.lazy')) {
-          hasDynamicImports = true;
-          break;
-        }
-      } catch (error) {
-        // Error reading file
-      }
-    }
-
-    if (!hasDynamicImports) {
+  private generatePackagingFindings(findings: Finding[], packaging: PackagingSignals): void {
+    if (packaging.packagesEvaluated === 0) {
       findings.push({
-        id: 'perf-no-code-splitting',
+        id: 'perf-no-package-json',
         type: 'warning',
-        message: 'No code splitting detected - consider using dynamic imports',
+        message: 'No package.json found to evaluate library packaging',
         severity: 'medium',
-        suggestion: 'Use React.lazy() or dynamic import() to split your bundle',
       });
-    } else {
-      findings.push({
-        id: 'perf-code-splitting',
-        type: 'success',
-        message: 'Code splitting implemented with dynamic imports',
-        severity: 'low',
-      });
-    }
-  }
-
-  private async checkTreeShaking(findings: Finding[], buildConfig: any): Promise<void> {
-    // Check if tree shaking is likely enabled
-    const hasModernBundler = buildConfig.webpack || buildConfig.vite || buildConfig.rollup;
-    const hasProductionBuild = buildConfig.optimizations.includes('production-build');
-    
-    if (hasModernBundler && hasProductionBuild) {
-      findings.push({
-        id: 'perf-tree-shaking',
-        type: 'success',
-        message: 'Tree shaking likely enabled with modern bundler',
-        severity: 'low',
-      });
-    } else if (!hasModernBundler) {
-      findings.push({
-        id: 'perf-no-modern-bundler',
-        type: 'warning',
-        message: 'No modern bundler detected - tree shaking may not be enabled',
-        severity: 'medium',
-        suggestion: 'Use Webpack, Vite, or Rollup for optimal bundle optimization',
-      });
-    }
-  }
-
-  private generateFindings(
-    findings: Finding[],
-    metrics: any,
-    bundleAnalysis: any,
-    imageAnalysis: any
-  ): void {
-    // Bundle size findings
-    if (bundleAnalysis.totalSize > 1024 * 1024) { // > 1MB
-      findings.push({
-        id: 'perf-large-bundle',
-        type: 'warning',
-        message: `Total bundle size is ${(bundleAnalysis.totalSize / 1024 / 1024).toFixed(2)}MB`,
-        severity: 'high',
-        suggestion: 'Consider code splitting and tree shaking to reduce bundle size',
-      });
+      return;
     }
 
-    // Large individual bundles
-    bundleAnalysis.bundles.slice(0, 3).forEach((bundle: any, index: number) => {
-      if (bundle.size > 300 * 1024) { // > 300KB
-        findings.push({
-          id: `perf-large-bundle-${index}`,
-          type: 'warning',
-          message: `Large bundle: ${bundle.path} (${(bundle.size / 1024).toFixed(0)}KB)`,
-          severity: 'medium',
-          suggestion: 'Consider splitting this bundle or optimizing its contents',
-        });
-      }
+    const checks: Array<{ key: keyof PackagingSignals; label: string; suggestion: string }> = [
+      {
+        key: 'sideEffects',
+        label: 'sideEffects declaration',
+        suggestion:
+          'Declare "sideEffects": false (or an array of side-effectful files, e.g. CSS) so consumers\' bundlers can tree-shake',
+      },
+      {
+        key: 'exportsMap',
+        label: 'exports map',
+        suggestion:
+          'Add an "exports" map so entry points are explicit and deep-import surface is controlled',
+      },
+      {
+        key: 'esmEntry',
+        label: 'ESM entry point',
+        suggestion:
+          'Ship ESM via a "module" field, "type": "module", or an "import" condition in exports — required for tree shaking',
+      },
+      {
+        key: 'typesField',
+        label: 'TypeScript types field',
+        suggestion: 'Add a "types" field (or types conditions in exports) so consumers get typings',
+      },
+      {
+        key: 'filesAllowlist',
+        label: 'files allowlist',
+        suggestion:
+          'Add a "files" array so the published tarball contains only built artifacts',
+      },
+    ];
+
+    const present = checks.filter(c => (packaging[c.key] as number) >= 1);
+    const missing = checks.filter(c => (packaging[c.key] as number) === 0);
+    const partial = checks.filter(c => {
+      const v = packaging[c.key] as number;
+      return v > 0 && v < 1;
     });
 
-    // Image optimization findings
-    if (imageAnalysis.largeImages.length > 0) {
+    if (present.length > 0) {
       findings.push({
-        id: 'perf-large-images',
-        type: 'warning',
-        message: `Found ${imageAnalysis.largeImages.length} large images (>200KB)`,
-        severity: 'medium',
-        suggestion: 'Optimize images using compression and modern formats (WebP)',
-      });
-    }
-
-    if (imageAnalysis.unoptimizedFormats > 5) {
-      findings.push({
-        id: 'perf-image-formats',
-        type: 'info',
-        message: 'Consider using modern image formats like WebP for better compression',
+        id: 'perf-packaging-present',
+        type: 'success',
+        message: `Library packaging fields present: ${present.map(c => c.label).join(', ')}`,
         severity: 'low',
       });
     }
 
-    // Build configuration findings
-    if (!metrics.buildConfig.hasBuildScript) {
+    for (const check of missing) {
       findings.push({
-        id: 'perf-no-build-script',
+        id: `perf-missing-${check.key}`,
         type: 'warning',
-        message: 'No build script found in package.json',
-        severity: 'medium',
-        suggestion: 'Add a production build script with optimizations',
+        message: `Missing ${check.label} in package.json`,
+        severity: check.key === 'sideEffects' || check.key === 'esmEntry' ? 'medium' : 'low',
+        suggestion: check.suggestion,
+      });
+    }
+
+    for (const check of partial) {
+      const pct = Math.round((packaging[check.key] as number) * 100);
+      findings.push({
+        id: `perf-partial-${check.key}`,
+        type: 'warning',
+        message: `Only ${pct}% of publishable packages declare a ${check.label}`,
+        severity: 'low',
+        suggestion: check.suggestion,
       });
     }
   }
 
-  private async estimateGzipSize(size: number): Promise<number> {
-    // Rough estimate: gzip typically achieves 70-80% compression on text files
-    return Math.round(size * 0.3);
+  private generateHeavyDepFindings(findings: Finding[], heavyDeps: string[]): void {
+    for (const dep of heavyDeps) {
+      findings.push({
+        id: `perf-heavy-dep-${dep}`,
+        type: 'warning',
+        message: `Heavy runtime dependency: ${dep} — ${HEAVY_RUNTIME_DEPS[dep]}`,
+        severity: 'medium',
+        suggestion: HEAVY_RUNTIME_DEPS[dep],
+      });
+    }
   }
 
-  private calculateScore(findings: Finding[], metrics: any): number {
-    let score = 100;
+  private generateBuiltOutputFindings(
+    findings: Finding[],
+    built: { hasBuildOutput: boolean; entries: BuiltEntry[] }
+  ): void {
+    if (!built.hasBuildOutput) return;
 
-    // Deduct points based on findings
-    const criticalFindings = findings.filter(f => f.severity === 'critical').length;
-    const highFindings = findings.filter(f => f.severity === 'high').length;
-    const mediumFindings = findings.filter(f => f.severity === 'medium').length;
+    const jsEntries = built.entries
+      .filter(e => e.type === 'javascript')
+      .sort((a, b) => b.size - a.size);
 
-    score -= criticalFindings * 20;
-    score -= highFindings * 10;
-    score -= mediumFindings * 5;
-
-    // Bundle size penalties
-    if (metrics.bundleSize > 2 * 1024 * 1024) { // > 2MB
-      score -= 20;
-    } else if (metrics.bundleSize > 1 * 1024 * 1024) { // > 1MB
-      score -= 10;
+    const large = jsEntries.filter(e => e.size > LARGE_ENTRY_BYTES);
+    for (const entry of large.slice(0, 5)) {
+      findings.push({
+        id: `perf-large-entry-${entry.path}`,
+        type: 'warning',
+        message: `Large built entry: ${entry.path} (${Math.round(entry.size / 1024)}KB)`,
+        severity: entry.size > VERY_LARGE_ENTRY_BYTES ? 'high' : 'medium',
+        path: entry.path,
+        suggestion:
+          'Verify this entry only contains what its import path promises; large single entries defeat per-component consumption',
+      });
     }
 
-    // Bonus for optimizations
-    if (metrics.buildConfig?.optimizations?.length > 0) {
-      score += metrics.buildConfig.optimizations.length * 5;
+    if (jsEntries.length > 0 && large.length === 0) {
+      findings.push({
+        id: 'perf-entry-sizes-ok',
+        type: 'success',
+        message: `Largest built JS entry is ${Math.round(jsEntries[0].size / 1024)}KB — no oversized entries`,
+        severity: 'low',
+      });
     }
-
-    return Math.max(0, Math.min(100, score));
   }
 
-  private getGrade(score: number): string {
-    if (score >= 90) return 'A';
-    if (score >= 80) return 'B';
-    if (score >= 70) return 'C';
-    if (score >= 60) return 'D';
-    return 'F';
+  /** CSS delivery strategy is reported as signal, not scored. */
+  private generateCssStrategyFindings(findings: Finding[], entries: BuiltEntry[]): void {
+    const cssEntries = entries.filter(e => e.type === 'css');
+    if (cssEntries.length === 0) return;
+
+    if (cssEntries.length === 1 && cssEntries[0].size > 20 * 1024) {
+      findings.push({
+        id: 'perf-monolithic-css',
+        type: 'info',
+        message: `CSS ships as a single ${Math.round(cssEntries[0].size / 1024)}KB stylesheet (${cssEntries[0].path}) — consumers cannot load styles per component`,
+        severity: 'low',
+        path: cssEntries[0].path,
+        suggestion:
+          'Consider emitting per-component CSS (or CSS extractable per entry) so consumers only ship the styles they use',
+      });
+    } else if (cssEntries.length > 1) {
+      findings.push({
+        id: 'perf-css-per-entry',
+        type: 'success',
+        message: `CSS ships as ${cssEntries.length} files — per-component/extractable strategy`,
+        severity: 'low',
+      });
+    }
   }
 }

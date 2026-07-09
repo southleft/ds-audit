@@ -1,136 +1,97 @@
-# 🎨 DSAudit - Design System Audit CLI Tool
+# DSAudit — Design System Audit CLI
 
-A comprehensive CLI-based auditing tool that evaluates the health, structure, and completeness of code-based design systems. It provides deep insights into component quality, token usage, documentation completeness, and overall system maturity with actionable recommendations for improvement.
+A CLI tool that evaluates the health, structure, and completeness of code-based design systems. It scores component quality, design token usage, documentation, tooling, performance, and accessibility, and produces actionable, prioritized recommendations.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 
-## ✨ Key Features
+## Key Features
 
-- 🔍 **Comprehensive Analysis**: Audits 6 critical aspects of design systems
-- 📊 **Interactive Dashboard**: Real-time visualization with Chart.js
-- 🤖 **AI-Powered Insights**: Optional Claude API integration for intelligent recommendations
-- 📈 **Smart Scoring**: Weighted category grades (A-F) with detailed metrics
-- 🎯 **Actionable Recommendations**: Priority-sorted with effort/impact analysis
-- 🚀 **Token Coverage Analysis**: Advanced detection of hardcoded values vs. design tokens
-- ♿ **Accessibility Focus**: WCAG compliance checking and recommendations
-- 📝 **Multiple Output Formats**: Markdown reports, JSON data, and HTML dashboard
+- **Deterministic audits** across 6 categories with weighted A–F grades
+- **Optional AI judge** — a rubric-based qualitative review powered by Claude, blended into scores at a bounded weight
+- **Interactive dashboard** — React + Mantine UI with live audit progress (Server-Sent Events)
+- **Reports** — Markdown and JSON output
+- **Token coverage analysis** — detection of hardcoded values vs. design tokens
+- **Actionable recommendations** with priority and effort ratings
 
-## 🚀 Quick Start
+## Quick Start
 
-### Installation
+Requires Node.js >= 18.
 
 ```bash
-# Clone the repository
-git clone https://github.com/[yourusername]/dsaudit.git
+git clone https://github.com/southleft/dsaudit.git
 cd dsaudit
-
-# Install dependencies
 npm install
-
-# Build the tool
 npm run build
-
-# Link globally for CLI usage
 npm link
-```
 
-### Running Your First Audit
-
-```bash
-# After linking, navigate to your design system project
-cd /path/to/your/design-system
-
-# Run the audit
+# Then, in your design system project:
 dsaudit init
 ```
 
-### Alternative: Run Without Installing
+Or run without linking:
 
 ```bash
-# From the dsaudit directory
-node /path/to/dsaudit/dist/cli.js init
+node /path/to/dsaudit/dist/cli.js init --path /path/to/your/design-system
 ```
 
-## Usage
+## Commands
 
-### Initialize and Run Audit
+### `dsaudit init`
+
+Interactive setup and audit. Prompts for which modules to audit and whether to enable the AI judge, saves `.dsaudit.json`, runs the audit, generates reports, and opens the dashboard.
 
 ```bash
-dsaudit init
+dsaudit init                     # audit the current directory
+dsaudit init --path <dir>        # audit a specific directory
+dsaudit init --no-interactive    # use defaults (AI enabled only if ANTHROPIC_API_KEY is set)
 ```
 
-This command:
-1. Scans your current directory for design system files
-2. Prompts for configuration options
-3. Runs the audit
-4. Generates reports in `./audit` directory
-5. Opens an interactive dashboard (if enabled)
+### `dsaudit run`
 
-### Run with Existing Configuration
+Non-interactive audit using an existing `.dsaudit.json` — suited for CI/CD.
 
 ```bash
-dsaudit run
+dsaudit run                      # uses ./.dsaudit.json
+dsaudit run --config <path>      # custom config file
+dsaudit run --output <dir>       # override report output directory
+dsaudit run --format json,md    # report formats (json, md)
+dsaudit run --dashboard          # start the dashboard after the audit
+dsaudit run --quiet              # minimal output for CI
 ```
 
-### Configure Settings
+### `dsaudit config`
 
 ```bash
-dsaudit config --show  # View current configuration
-dsaudit config --reset # Reset to defaults
+dsaudit config --show   # pretty-print .dsaudit.json from the current directory
+dsaudit config --reset  # write the default configuration
 ```
 
 ## Audit Categories
 
-### 1. Component Library (25% weight)
-- Component structure and organization
-- Type safety and prop validation
-- Test coverage
-- Accessibility compliance
-- Storybook documentation
+| Category | Weight | What it checks |
+|---|---|---|
+| Components | 25% | Structure, type safety, test coverage, stories |
+| Design Tokens | 20% | Token architecture, coverage vs. hardcoded values, consistency |
+| Documentation | 20% | README/CONTRIBUTING/CHANGELOG, component docs, governance |
+| Accessibility | 13% | ARIA usage, keyboard support, focus management (static heuristics) |
+| Tooling | 12% | Build system, testing infrastructure, linting, CI/CD |
+| Performance | 10% | Bundle/packaging setup, code splitting, build configuration |
 
-### 2. Design Tokens (20% weight)
-- Token architecture (global, semantic, component-level)
-- **Smart Coverage Analysis**: Calculates actual token usage vs. hardcoded values
-- Format consistency across CSS, JSON, and JS tokens
-- Token redundancy detection
-- Multi-theme/multi-mode support detection
+Grades: **A** ≥ 90, **B** ≥ 80, **C** ≥ 70, **D** ≥ 60, **F** below 60.
 
-### 3. Documentation (20% weight)
-- Essential docs (README, CONTRIBUTING, CHANGELOG, API)
-- Component-level documentation
-- Storybook stories
-- Governance guidelines (versioning, contribution process)
+## AI Judge (optional)
 
-### 4. Tooling & Infrastructure (12% weight)
-- Build system configuration (Vite, Webpack, esbuild)
-- Testing infrastructure (Jest, Vitest, Playwright)
-- CI/CD setup
-- Developer experience (linting, formatting, git hooks)
+When enabled, an LLM judge (Claude) performs a rubric-based qualitative review of the **documentation**, **components**, and **tokens** categories. Its score is blended into those categories at a bounded weight (default 30%) — the deterministic score always dominates. Judge input is clearly labeled in reports, and each judged category keeps its `deterministicScore` alongside the blended result.
 
-### 5. Performance (10% weight)
-- Code splitting and dynamic imports
-- Bundle size analysis
-- Image optimization
-- Build performance
-
-### 6. Accessibility (13% weight)
-- ARIA compliance and labeling
-- Keyboard navigation
-- Focus management
-- Screen reader support
-- Color contrast
+- Requires `ANTHROPIC_API_KEY` (environment variable or project `.env`)
+- Never fabricates output — if the judge call fails, its section is simply absent and scores remain deterministic
+- With AI disabled (the default), all scores are fully deterministic
 
 ## Configuration
 
-The tool creates a `.dsaudit.json` configuration file. Copy `.dsaudit.example.json` to get started:
-
-```bash
-cp .dsaudit.example.json .dsaudit.json
-```
-
-Configuration options:
+`dsaudit init` writes `.dsaudit.json` (the API key is stored only in `.env`, never in the JSON config). You can also copy `.dsaudit.example.json`:
 
 ```json
 {
@@ -145,8 +106,7 @@ Configuration options:
     "accessibility": true
   },
   "ai": {
-    "enabled": false,
-    "apiKey": "your-api-key"
+    "enabled": false
   },
   "dashboard": {
     "enabled": true,
@@ -156,46 +116,31 @@ Configuration options:
 }
 ```
 
+Optional `ai` fields: `model` (defaults to the judge's built-in model) and `judgeWeight` (0–1, default 0.3).
+
 ## Output
 
-### Reports
-- `audit/report.md` - Comprehensive markdown report
-- `audit/results.json` - Detailed JSON data
-- `audit/dashboard` - Interactive HTML dashboard
+- `audit/report.md` — human-readable Markdown report
+- `audit/results.json` — machine-readable JSON data
+- Dashboard at `http://localhost:4321` — interactive React + Mantine UI with live progress, category drill-down, action plan, and export
 
-### Dashboard Features
-- Real-time audit progress
-- Interactive charts (radar, bar, pie, etc.)
-- Drill-down into specific findings
-- Export capabilities
-- Recommendation tracking
+There is no HTML file report — the dashboard is the interactive HTML experience.
 
+## Limitations
 
-## 🛠️ Development
+- **Accessibility** checks are static heuristics plus tooling detection. They catch common issues (missing ARIA labels, keyboard handler gaps) but full WCAG compliance requires runtime testing with real assistive technologies.
+- **Performance** checks are packaging-oriented (bundle configuration, code splitting, build setup) — they do not measure runtime performance.
+- Token coverage analysis is optimized for CSS, CSS Modules, and CSS-in-JS.
 
-### Prerequisites
-- Node.js >= 18.0.0
-- npm or yarn
-- TypeScript 5.0+
-
-### Setup
+## Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Run in development mode
-npm run dev
-
-# Build the project
-npm run build
-
-# Run tests
-npm test
-
-# Lint and type-check
-npm run lint
-npm run typecheck
+npm run dev        # development mode
+npm run build      # compile TypeScript + build dashboard
+npm test           # run tests
+npm run lint       # ESLint
+npm run typecheck  # TypeScript type checking
 ```
 
 ### Project Structure
@@ -203,48 +148,24 @@ npm run typecheck
 ```
 dsaudit/
 ├── src/
-│   ├── cli/           # CLI commands and entry points
-│   ├── core/          # Core audit engine and scoring
-│   ├── modules/       # Individual audit modules
-│   ├── dashboard/     # Web dashboard UI
+│   ├── cli/           # CLI commands (init, run, config)
+│   ├── core/          # Audit engine, scoring, report generation, LLM judge
+│   ├── modules/       # Deterministic auditors per category
+│   ├── dashboard/     # React + Mantine dashboard and Express server
 │   └── utils/         # Shared utilities
 ├── dist/              # Compiled output
-└── example-design-system/  # Example for testing
+└── example-design-system/  # Example project for testing
 ```
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+Contributions are welcome. For major changes, please open an issue first at [github.com/southleft/dsaudit](https://github.com/southleft/dsaudit).
 
-### Areas for Contribution
-- Additional audit modules
-- Framework-specific analyzers (React, Vue, Angular, etc.)
-- Enhanced token detection algorithms
-- Accessibility testing improvements
-- Dashboard UI enhancements
+## Additional Resources
 
-## 📚 Additional Resources
+- [QUICKSTART.md](QUICKSTART.md) — quick start guide
+- [example-design-system/](example-design-system/) — example project structure
 
-- [QUICKSTART.md](QUICKSTART.md) - Quick start guide for immediate setup
-- [CLAUDE.md](CLAUDE.md) - Claude AI integration details
-- [example-design-system/](example-design-system/) - Example project structure
+## License
 
-## 🐛 Known Issues
-
-- Token coverage calculation is optimized for CSS-in-JS and CSS Modules
-- AI insights require a Claude API key
-- Dashboard requires modern browser with ES6 support
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details
-
-## 🙏 Acknowledgments
-
-- Built with TypeScript and Node.js
-- Dashboard powered by Chart.js
-- AI insights powered by Claude (Anthropic)
-
----
-
-**Note**: This tool is in active development. Contributions and feedback are welcome!
+MIT License — see [LICENSE](LICENSE).

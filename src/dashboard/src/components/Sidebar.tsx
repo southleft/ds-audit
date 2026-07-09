@@ -1,115 +1,90 @@
 import React from 'react';
-import { NavLink, Group, Text, Badge, Anchor } from '@mantine/core';
-import { AuditResult } from '@types';
+import { Badge, Group, NavLink, Stack, Text, Divider } from '@mantine/core';
 import {
-  BarChart3,
-  FolderOpen,
-  CheckSquare,
-  Lightbulb,
   Activity,
-  Download
+  ClipboardList,
+  Download,
+  LayoutDashboard,
+  ListChecks,
 } from 'lucide-react';
-import './Sidebar.css';
+import type { AuditResult } from '../types';
+import { scoreColor } from '../lib/format';
+
+export type Section = 'overview' | 'categories' | 'action-plan' | 'progress' | 'export';
 
 interface SidebarProps {
-  currentSection: string;
-  onSectionChange: (section: any) => void;
+  currentSection: Section;
+  onSectionChange: (section: Section) => void;
   auditResult: AuditResult | null;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, auditResult }) => {
-  // Extract design system name from project path
-  const projectName = auditResult?.projectPath ?
-    auditResult.projectPath.split('/').pop() || 'Design System' :
-    'Design System';
+const NAV_ITEMS: Array<{ id: Section; label: string; icon: React.ReactNode }> = [
+  { id: 'overview', label: 'Overview', icon: <LayoutDashboard size={17} /> },
+  { id: 'categories', label: 'Categories', icon: <ListChecks size={17} /> },
+  { id: 'action-plan', label: 'Action Plan', icon: <ClipboardList size={17} /> },
+  { id: 'progress', label: 'Live Progress', icon: <Activity size={17} /> },
+  { id: 'export', label: 'Export', icon: <Download size={17} /> },
+];
 
-  const navItems = [
-    {
-      group: 'Analysis',
-      items: [
-        { id: 'overview', label: 'Overview', icon: BarChart3, badge: auditResult?.overallGrade },
-        { id: 'categories', label: 'Categories', icon: FolderOpen, badge: `${auditResult?.categories.length || 0}` },
-        { id: 'action-plan', label: 'Action Plan', icon: CheckSquare },
-        { id: 'recommendations', label: 'Recommendations', icon: Lightbulb },
-      ],
-    },
-    {
-      group: 'Tools',
-      items: [
-        { id: 'progress', label: 'Live Progress', icon: Activity },
-        { id: 'export', label: 'Export', icon: Download },
-      ],
-    },
-  ];
+const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChange, auditResult }) => {
+  const hasResults = Boolean(auditResult && auditResult.categories?.length > 0);
+  const projectName =
+    auditResult?.projectPath
+      ?.split('/')
+      .filter(segment => segment && segment !== '.' && segment !== '..')
+      .pop() || null;
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-logo">
-          <h2>DSAudit</h2>
-          <Text size="sm" c="dimmed" fw={500}>
-            {projectName}
+    <Stack gap={0} h="100%" p="md" justify="space-between">
+      <div>
+        <Group gap="xs" mb={4}>
+          <Text fw={800} size="lg">
+            dsaudit
           </Text>
-        </div>
-      </div>
+        </Group>
+        <Text size="xs" c="dimmed" mb="md" truncate>
+          {projectName ?? 'Design system audit'}
+        </Text>
 
-      <div className="nav-sections">
-        {navItems.map((group) => (
-          <div key={group.group} className="nav-group">
-            <div className="nav-group-header">
-              <Text className="nav-group-title" size="xs" fw={600}>
-                {group.group}
-              </Text>
-            </div>
-            {group.items.map((item) => (
-              <NavLink
-                key={item.id}
-                active={currentSection === item.id}
-                label={
-                  <Group gap="xs">
-                    <item.icon size={16} className="nav-icon" />
-                    <span className="nav-label">{item.label}</span>
-                    {item.badge && (
-                      <Badge size="xs" variant="light" className="nav-badge">
-                        {item.badge}
-                      </Badge>
-                    )}
-                  </Group>
-                }
-                onClick={() => {
-                  onSectionChange(item.id);
-                  window.location.hash = item.id;
-                }}
-                className="nav-item"
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <div className="sidebar-footer">
-        {auditResult && (
-          <div className="audit-info">
-            <Text size="xs" c="dimmed" fw={500}>
-              Last audit: {new Date(auditResult.timestamp).toLocaleString()}
-            </Text>
-          </div>
-        )}
-        <div className="footer-link">
-          <Text size="xs" c="dimmed">
-            Made with ❤️ by{' '}
-            <Anchor
-              href="https://southleft.com"
-              target="_blank"
-              size="xs"
-              style={{ color: 'var(--text-secondary)' }}
+        {hasResults && auditResult && (
+          <Group gap="xs" mb="md">
+            <Badge
+              color={scoreColor(auditResult.overallScore)}
+              variant="filled"
+              size="lg"
             >
-              Southleft
-            </Anchor>
-          </Text>
-        </div>
+              {auditResult.overallScore} · {auditResult.overallGrade}
+            </Badge>
+            {auditResult.partial && (
+              <Badge color="orange" variant="light" size="lg">
+                PARTIAL
+              </Badge>
+            )}
+          </Group>
+        )}
+
+        <Divider mb="sm" />
+
+        <Stack gap={4}>
+          {NAV_ITEMS.map(item => (
+            <NavLink
+              key={item.id}
+              active={currentSection === item.id}
+              label={item.label}
+              leftSection={item.icon}
+              onClick={() => onSectionChange(item.id)}
+              style={{ borderRadius: 8 }}
+            />
+          ))}
+        </Stack>
       </div>
-    </div>
+
+      {hasResults && auditResult && (
+        <Text size="xs" c="dimmed">
+          Last audit: {new Date(auditResult.timestamp).toLocaleString()}
+        </Text>
+      )}
+    </Stack>
   );
 };
 

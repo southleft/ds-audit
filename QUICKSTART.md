@@ -1,10 +1,11 @@
 # DSAudit Quick Start Guide
 
+Requires Node.js >= 18.
+
 ## Installation
 
 ```bash
-# Clone and build the tool
-git clone https://github.com/[yourusername]/dsaudit.git
+git clone https://github.com/southleft/dsaudit.git
 cd dsaudit
 npm install
 npm run build
@@ -20,10 +21,10 @@ dsaudit init
 ```
 
 This will:
-- Scan your design system files
-- Analyze 6 categories (components, tokens, docs, etc.)
-- Generate reports in `./audit/`
-- Open an interactive dashboard at http://localhost:4321
+- Prompt for which modules to audit and whether to enable the AI judge
+- Analyze 6 categories (components, tokens, documentation, tooling, performance, accessibility)
+- Generate Markdown and JSON reports in `./audit/`
+- Open the interactive dashboard at http://localhost:4321
 
 ### 2. Run on a specific directory
 
@@ -37,37 +38,51 @@ dsaudit init --path /path/to/your/design-system
 dsaudit init --no-interactive
 ```
 
-### 4. With AI-powered insights (requires Claude API key)
+AI is enabled automatically only when `ANTHROPIC_API_KEY` is set; otherwise scores are deterministic-only.
+
+### 4. Re-run with an existing configuration (CI-friendly)
 
 ```bash
-dsaudit init
-# Select "Enable AI insights" when prompted
-# Enter your Claude API key
+dsaudit run                    # uses ./.dsaudit.json
+dsaudit run --quiet            # minimal output
+dsaudit run --format json      # json and/or md
+dsaudit run --dashboard        # start dashboard after the audit
 ```
+
+### 5. Manage configuration
+
+```bash
+dsaudit config --show   # view current .dsaudit.json
+dsaudit config --reset  # write defaults
+```
+
+## Optional: AI Judge
+
+Enable the AI judge during `dsaudit init` (requires an Anthropic API key, stored in `.env`). It performs a rubric-based qualitative review of the documentation, components, and tokens categories, blended into their scores at a bounded weight (default 30% — deterministic scores always dominate). If the judge fails or is disabled, scores are fully deterministic.
 
 ## Understanding the Results
 
 ### Overall Score
-- **A (90-100)**: Excellent design system health
-- **B (80-89)**: Good with minor improvements needed
-- **C (70-79)**: Average, several areas need attention
-- **D (60-69)**: Below average, significant improvements needed
-- **F (0-59)**: Major issues across multiple categories
+- **A (90–100)**: Excellent design system health
+- **B (80–89)**: Good with minor improvements needed
+- **C (70–79)**: Average, several areas need attention
+- **D (60–69)**: Below average, significant improvements needed
+- **F (0–59)**: Major issues across multiple categories
 
 ### Categories Evaluated
 
-1. **Component Library (25%)**: Structure, tests, accessibility, TypeScript
+1. **Components (25%)**: Structure, tests, TypeScript types, stories
 2. **Design Tokens (20%)**: Token system, usage, hardcoded values
-3. **Documentation (20%)**: README, component docs, governance, Storybook
-4. **Tooling (12%)**: ESLint, Prettier, build tools, CI/CD
-5. **Performance (10%)**: Bundle size, optimization
-6. **Accessibility (13%)**: ARIA, keyboard support, semantic HTML
+3. **Documentation (20%)**: README, component docs, governance
+4. **Accessibility (13%)**: ARIA, keyboard support, semantic HTML (static heuristics)
+5. **Tooling (12%)**: ESLint, Prettier, build tools, CI/CD
+6. **Performance (10%)**: Bundle/packaging setup, build configuration
 
-### Output Files
+### Output
 
-- `audit/report.md` - Human-readable markdown report
-- `audit/results.json` - Machine-readable JSON data
-- Dashboard at http://localhost:4321 - Interactive visualizations
+- `audit/report.md` — human-readable Markdown report
+- `audit/results.json` — machine-readable JSON data
+- Dashboard at http://localhost:4321 — interactive React + Mantine UI
 
 ## Example Output
 
@@ -91,43 +106,17 @@ Top Recommendations:
 
 ## Tips for Better Scores
 
-1. **Quick Wins**:
-   - Add a comprehensive README.md
-   - Create CONTRIBUTING.md
-   - Add ESLint configuration
-   - Use design tokens instead of hardcoded values
-
-2. **Medium Effort**:
-   - Add unit tests for components
-   - Create Storybook stories
-   - Implement proper TypeScript types
-   - Add accessibility attributes
-
-3. **Long Term**:
-   - Establish atomic design structure
-   - Create comprehensive documentation
-   - Implement CI/CD pipelines
-   - Add visual regression testing
+1. **Quick wins**: add a comprehensive README, CONTRIBUTING.md, and ESLint configuration; use design tokens instead of hardcoded values
+2. **Medium effort**: add unit tests, Storybook stories, proper TypeScript types, and accessibility attributes
+3. **Long term**: establish a clear component structure, comprehensive documentation, and CI/CD pipelines
 
 ## Troubleshooting
 
 ### Port 4321 is already in use
-The dashboard uses port 4321 by default. If it's in use, the CLI will notify you.
+The dashboard uses port 4321 by default (configurable via `dashboard.port` in `.dsaudit.json`).
 
 ### No components found
-Ensure your components are in standard locations:
-- `components/`
-- `src/components/`
-- `lib/components/`
+Ensure your components are in standard locations such as `components/`, `src/components/`, or `lib/components/`.
 
 ### Low scores
-This is normal for projects without an established design system. Use the recommendations to improve gradually.
-
-## Next Steps
-
-1. Review the generated report
-2. Prioritize high-impact, quick-win recommendations
-3. Re-run the audit periodically to track progress
-4. Share results with your team
-
-Need help? Check the README for more details or contribute to the project!
+This is normal for projects without an established design system. Use the recommendations to improve gradually and re-run the audit to track progress.

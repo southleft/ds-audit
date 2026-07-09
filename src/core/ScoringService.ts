@@ -1,70 +1,105 @@
-import type { CategoryResult, Recommendation } from '../types/index.js';
+import type { CategoryResult, Finding, Recommendation } from '../types/index.js';
+
+/**
+ * Single source of truth for category weights. Auditors must not declare
+ * their own weights — the engine stamps these onto results.
+ * 6 categories (governance merged into documentation). Sums to 1.00.
+ */
+export const CATEGORY_WEIGHTS: Record<string, number> = {
+  components: 0.25,
+  tokens: 0.2,
+  documentation: 0.2,
+  tooling: 0.12,
+  performance: 0.1,
+  accessibility: 0.13,
+};
+
+const GRADE_THRESHOLDS = [
+  { grade: 'A', minScore: 90 },
+  { grade: 'B', minScore: 80 },
+  { grade: 'C', minScore: 70 },
+  { grade: 'D', minScore: 60 },
+  { grade: 'F', minScore: 0 },
+];
 
 export class ScoringService {
-  private readonly gradeThresholds = [
-    { grade: 'A', minScore: 90 },
-    { grade: 'B', minScore: 80 },
-    { grade: 'C', minScore: 70 },
-    { grade: 'D', minScore: 60 },
-    { grade: 'F', minScore: 0 },
-  ];
+  /**
+   * Effective weights after optional external-DS adjustment. When a project
+   * is built on an external design system (e.g. Mantine, MUI), component and
+   * token weights shrink and the freed weight shifts to documentation,
+   * accessibility, and tooling (40/30/30).
+   */
+  getEffectiveWeights(externalDSAdjustment?: {
+    componentWeight: number;
+    tokenWeight: number;
+    reason: string;
+  }): Record<string, number> {
+    const weights = { ...CATEGORY_WEIGHTS };
 
-  // 6 categories (governance merged into documentation)
-  private readonly categoryWeights: Record<string, number> = {
-    components: 0.25,
-    tokens: 0.20,
-    documentation: 0.20,  // Increased from 0.15 (absorbed governance)
-    tooling: 0.12,        // Slight increase
-    performance: 0.10,
-    accessibility: 0.13,  // Slight increase
-  };
+    if (externalDSAdjustment) {
+      weights.components = externalDSAdjustment.componentWeight;
+      weights.tokens = externalDSAdjustment.tokenWeight;
+
+      const freed =
+        CATEGORY_WEIGHTS.components +
+        CATEGORY_WEIGHTS.tokens -
+        externalDSAdjustment.componentWeight -
+        externalDSAdjustment.tokenWeight;
+
+      if (freed > 0) {
+        weights.documentation += freed * 0.4;
+        weights.accessibility += freed * 0.3;
+        weights.tooling += freed * 0.3;
+      }
+    }
+
+    return weights;
+  }
 
   /**
-   * Calculate the overall score with optional external DS adjustment
-   * @param categoryResults - Category results from auditors
-   * @param externalDSAdjustment - Optional adjustment for external design system usage
+   * Weighted average over the categories that actually completed. Categories
+   * with unknown IDs are excluded (never given a made-up weight). Callers are
+   * responsible for marking the result partial when categories are missing.
    */
   calculateOverallScore(
     categoryResults: CategoryResult[],
     externalDSAdjustment?: { componentWeight: number; tokenWeight: number; reason: string }
   ): { score: number; grade: string } {
+    const weights = this.getEffectiveWeights(externalDSAdjustment);
+
     let weightedSum = 0;
     let totalWeight = 0;
 
-    // Apply external DS weight adjustments if provided
-    const adjustedWeights = { ...this.categoryWeights };
-    if (externalDSAdjustment) {
-      adjustedWeights.components = externalDSAdjustment.componentWeight;
-      adjustedWeights.tokens = externalDSAdjustment.tokenWeight;
-
-      // Redistribute the weight difference to other categories
-      const originalTotal = this.categoryWeights.components + this.categoryWeights.tokens;
-      const newTotal = externalDSAdjustment.componentWeight + externalDSAdjustment.tokenWeight;
-      const difference = originalTotal - newTotal;
-
-      // Add extra weight to documentation and accessibility for external DS projects
-      if (difference > 0) {
-        adjustedWeights.documentation = (adjustedWeights.documentation || 0.15) + difference * 0.4;
-        adjustedWeights.accessibility = (adjustedWeights.accessibility || 0.10) + difference * 0.3;
-        adjustedWeights.tooling = (adjustedWeights.tooling || 0.10) + difference * 0.3;
-      }
-    }
-
-    categoryResults.forEach(category => {
-      const weight = adjustedWeights[category.id] || 0.1;
+    for (const category of categoryResults) {
+      const weight = weights[category.id];
+      if (weight === undefined) continue;
       weightedSum += category.score * weight;
       totalWeight += weight;
-    });
+    }
 
     const score = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
-    const grade = this.getGrade(score);
-
-    return { score, grade };
+    return { score, grade: this.getGrade(score) };
   }
 
   getGrade(score: number): string {
-    const threshold = this.gradeThresholds.find(t => score >= t.minScore);
+    const threshold = GRADE_THRESHOLDS.find(t => score >= t.minScore);
     return threshold?.grade || 'F';
+  }
+
+  /**
+   * Blend a deterministic score with an LLM judge score. The judge weight is
+   * clamped to [0, 0.5] — the deterministic score always dominates — and a
+   * low-confidence judgement is not blended at all.
+   */
+  blendWithJudge(
+    deterministicScore: number,
+    judgeScore: number,
+    judgeConfidence: 'low' | 'medium' | 'high',
+    judgeWeight = 0.3
+  ): number {
+    if (judgeConfidence === 'low') return deterministicScore;
+    const w = Math.min(Math.max(judgeWeight, 0), 0.5);
+    return Math.round(deterministicScore * (1 - w) + judgeScore * w);
   }
 
   generateRecommendations(categoryResults: CategoryResult[]): Recommendation[] {
@@ -72,26 +107,25 @@ export class ScoringService {
     let recommendationId = 1;
 
     categoryResults.forEach(category => {
-      // Generate recommendations based on findings
       const criticalFindings = category.findings.filter(f => f.severity === 'critical');
       const highFindings = category.findings.filter(f => f.severity === 'high');
-      const mediumFindings = category.findings.filter(f => f.severity === 'medium' || f.type === 'warning');
+      const mediumFindings = category.findings.filter(
+        f => f.severity === 'medium' && f.type !== 'success'
+      );
 
-      // Critical issues become high priority recommendations
       criticalFindings.forEach(finding => {
         recommendations.push({
           id: `rec-${recommendationId++}`,
           title: `Fix critical issue in ${category.name}`,
           description: finding.message,
           priority: 'high',
-          effort: 'medium-lift',
+          effort: this.estimateEffort(finding),
           impact: 'high',
           category: category.id,
           implementation: finding.suggestion,
         });
       });
 
-      // High severity findings
       highFindings.forEach(finding => {
         recommendations.push({
           id: `rec-${recommendationId++}`,
@@ -105,9 +139,8 @@ export class ScoringService {
         });
       });
 
-      // Medium severity findings and warnings (limit to top 5 per category to avoid overwhelming)
-      const topMediumFindings = mediumFindings.slice(0, 5);
-      topMediumFindings.forEach(finding => {
+      // Limit medium findings to the top 5 per category to avoid overwhelming
+      mediumFindings.slice(0, 5).forEach(finding => {
         recommendations.push({
           id: `rec-${recommendationId++}`,
           title: `Improve ${category.name}`,
@@ -120,24 +153,23 @@ export class ScoringService {
         });
       });
 
-      // Category-specific recommendations based on score
       if (category.score < 70) {
         recommendations.push(...this.generateCategoryRecommendations(category, recommendationId));
-        recommendationId += 6; // Reserve space for category recommendations
+        recommendationId += 6;
       }
     });
 
-    // Sort by priority and impact
     return this.prioritizeRecommendations(recommendations);
   }
 
-  private estimateEffort(finding: any): 'quick-win' | 'medium-lift' | 'heavy-lift' {
-    // Simple heuristic based on finding type
-    if (finding.message.includes('missing') || finding.message.includes('add')) {
-      return 'quick-win';
-    }
-    if (finding.message.includes('refactor') || finding.message.includes('restructure')) {
+  private estimateEffort(finding: Finding): 'quick-win' | 'medium-lift' | 'heavy-lift' {
+    const message = finding.message.toLowerCase();
+    if (/\b(refactor|restructure|migrate|rewrite|architecture)\b/.test(message)) {
       return 'heavy-lift';
+    }
+    // Creating a single missing file or config entry is genuinely quick.
+    if (/\b(missing|not found|add|enable|install|configure)\b/.test(message)) {
+      return 'quick-win';
     }
     return 'medium-lift';
   }
@@ -147,7 +179,7 @@ export class ScoringService {
     startId: number
   ): Recommendation[] {
     const recommendations: Recommendation[] = [];
-    
+
     switch (category.id) {
       case 'components':
         if (category.score < 60) {
@@ -159,11 +191,12 @@ export class ScoringService {
             effort: 'heavy-lift',
             impact: 'high',
             category: 'components',
-            implementation: 'Start by categorizing existing components into atoms, molecules, and organisms',
+            implementation:
+              'Start by categorizing existing components into atoms, molecules, and organisms',
           });
         }
         break;
-      
+
       case 'tokens':
         if (category.score < 70) {
           recommendations.push({
@@ -178,7 +211,7 @@ export class ScoringService {
           });
         }
         break;
-      
+
       case 'documentation':
         if (category.score < 50) {
           recommendations.push({
@@ -204,7 +237,8 @@ export class ScoringService {
             effort: 'medium-lift',
             impact: 'high',
             category: 'tooling',
-            implementation: 'Add modern bundler (Vite), testing framework, CI/CD pipeline, and linting tools',
+            implementation:
+              'Add modern bundler (Vite), testing framework, CI/CD pipeline, and linting tools',
           });
         }
         break;
@@ -213,13 +247,15 @@ export class ScoringService {
         if (category.score < 60) {
           recommendations.push({
             id: `rec-${startId + 4}`,
-            title: 'Optimize Performance',
-            description: 'Implement performance optimizations for faster load times and better user experience',
+            title: 'Optimize Library Packaging',
+            description:
+              'Improve how the design system is packaged so consuming apps get small, tree-shakeable bundles',
             priority: 'medium',
             effort: 'medium-lift',
             impact: 'high',
             category: 'performance',
-            implementation: 'Add code splitting, lazy loading, optimize images, and implement bundle analysis',
+            implementation:
+              'Add a sideEffects declaration, an exports map with ESM entries, and per-entry size tracking',
           });
         }
         break;
@@ -228,13 +264,15 @@ export class ScoringService {
         if (category.score < 70) {
           recommendations.push({
             id: `rec-${startId + 5}`,
-            title: 'Enhance Accessibility Compliance',
-            description: 'Improve accessibility to meet WCAG standards and support all users',
+            title: 'Adopt Accessibility Testing',
+            description:
+              'Add automated accessibility verification so regressions are caught before release',
             priority: 'high',
             effort: 'medium-lift',
             impact: 'high',
             category: 'accessibility',
-            implementation: 'Add ARIA labels, keyboard navigation, focus management, and screen reader support',
+            implementation:
+              'Add eslint-plugin-jsx-a11y, jest-axe (or axe-core in Storybook), and fix reported violations',
           });
         }
         break;
@@ -244,15 +282,21 @@ export class ScoringService {
   }
 
   private prioritizeRecommendations(recommendations: Recommendation[]): Recommendation[] {
+    const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
+    const impactScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
+    const effortScore: Record<string, number> = {
+      'quick-win': 3,
+      'medium-lift': 2,
+      'heavy-lift': 1,
+    };
+
     return recommendations.sort((a, b) => {
-      // Priority scoring
-      const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
-      const impactScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
-      const effortScore: Record<string, number> = { 'quick-win': 3, 'medium-lift': 2, 'heavy-lift': 1 };
-
-      const scoreA = priorityScore[a.priority] * impactScore[a.impact] * effortScore[a.effort];
-      const scoreB = priorityScore[b.priority] * impactScore[b.impact] * effortScore[b.effort];
-
+      // Unknown enum values (e.g. from bad upstream data) sort last instead
+      // of producing NaN comparisons.
+      const scoreA =
+        (priorityScore[a.priority] ?? 0) * (impactScore[a.impact] ?? 0) * (effortScore[a.effort] ?? 0);
+      const scoreB =
+        (priorityScore[b.priority] ?? 0) * (impactScore[b.impact] ?? 0) * (effortScore[b.effort] ?? 0);
       return scoreB - scoreA;
     });
   }

@@ -34,7 +34,7 @@ program
   .description('Run audit with existing configuration')
   .option('-c, --config <path>', 'Path to config file', '.dsaudit.json')
   .option('-o, --output <dir>', 'Output directory for reports')
-  .option('--format <formats>', 'Output formats: json,md,html', 'json,md')
+  .option('--format <formats>', 'Output formats: json,md', 'json,md')
   .option('--dashboard', 'Start dashboard after audit')
   .option('--quiet', 'Minimal output')
   .action(runCommand);

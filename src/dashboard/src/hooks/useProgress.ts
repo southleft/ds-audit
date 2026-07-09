@@ -1,129 +1,246 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+export type ProgressEventType =
+  | 'connected'
+  | 'audit:start'
+  | 'category:start'
+  | 'category:complete'
+  | 'category:error'
+  | 'audit:complete'
+  | 'audit:error'
+  | 'ai:start'
+  | 'ai:category'
+  | 'ai:complete'
+  | 'ai:error';
+
 export interface ProgressUpdate {
-  type: 'connected' | 'audit:start' | 'category:start' | 'category:complete' | 'category:error' | 'audit:complete';
+  type: ProgressEventType;
   category?: string;
   progress?: number;
   message?: string;
   totalCategories?: number;
-  result?: any;
+  result?: { score?: number; grade?: string; findings?: unknown[] };
   error?: string;
 }
 
-const TOTAL_CATEGORIES = 6; // Known number of audit categories (governance merged into documentation)
+export type CategoryStatus =
+  | { state: 'running' }
+  | { state: 'complete'; score?: number; grade?: string; findingsCount?: number }
+  | { state: 'error'; error?: string };
 
-export function useProgress() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [currentCategory, setCurrentCategory] = useState<string | null>(null);
-  const [message, setMessage] = useState<string>('');
-  const [categoryResults, setCategoryResults] = useState<Record<string, any>>({});
-  const [isComplete, setIsComplete] = useState(false);
-  const [lastAuditTime, setLastAuditTime] = useState<number>(0);
-  const [isAuditActive, setIsAuditActive] = useState(false);
-  const auditActiveRef = useRef(false);
-  const completedCountRef = useRef(0);
+export type AiPhase = 'idle' | 'running' | 'complete' | 'error';
+
+export interface ProgressState {
+  isConnected: boolean;
+  isAuditActive: boolean;
+  isComplete: boolean;
+  /** Set when the whole audit run failed (`audit:error`). */
+  auditError: string | null;
+  /** From the `audit:start` event — derived from enabled modules, never hardcoded. */
+  totalCategories: number | null;
+  /** Categories in the order they started. */
+  categoryOrder: string[];
+  categoryStatus: Record<string, CategoryStatus>;
+  currentCategory: string | null;
+  progress: number;
+  message: string;
+  aiPhase: AiPhase;
+  aiCurrentCategory: string | null;
+  aiError: string | null;
+}
+
+const INITIAL_STATE: ProgressState = {
+  isConnected: false,
+  isAuditActive: false,
+  isComplete: false,
+  auditError: null,
+  totalCategories: null,
+  categoryOrder: [],
+  categoryStatus: {},
+  currentCategory: null,
+  progress: 0,
+  message: '',
+  aiPhase: 'idle',
+  aiCurrentCategory: null,
+  aiError: null,
+};
+
+function completedCount(status: Record<string, CategoryStatus>): number {
+  return Object.values(status).filter(s => s.state !== 'running').length;
+}
+
+function computeProgress(state: ProgressState): number {
+  const total = state.totalCategories ?? state.categoryOrder.length;
+  if (total <= 0) return 0;
+  return Math.min(100, Math.round((completedCount(state.categoryStatus) / total) * 100));
+}
+
+export function useProgress(onAuditComplete?: () => void) {
+  const [state, setState] = useState<ProgressState>(INITIAL_STATE);
+  const completeCallbackRef = useRef(onAuditComplete);
+  completeCallbackRef.current = onAuditComplete;
 
   const connect = useCallback(() => {
     const eventSource = new EventSource('/api/progress');
-    
+
     eventSource.onopen = () => {
-      console.log('[Progress] SSE connection opened');
-      setIsConnected(true);
+      setState(prev => ({ ...prev, isConnected: true }));
     };
 
-    eventSource.onmessage = (event) => {
+    eventSource.onmessage = event => {
+      let data: ProgressUpdate;
       try {
-        const data: ProgressUpdate = JSON.parse(event.data);
-        
+        data = JSON.parse(event.data) as ProgressUpdate;
+      } catch {
+        return;
+      }
+
+      setState(prev => {
         switch (data.type) {
           case 'connected':
-            setIsConnected(true);
-            break;
-            
+            return { ...prev, isConnected: true };
+
           case 'audit:start':
-            console.log('[Progress] Received audit:start event');
-            completedCountRef.current = 0;
-            setProgress(0);
-            setIsComplete(false);
-            setIsAuditActive(true);
-            auditActiveRef.current = true;
-            setCategoryResults({});
-            setMessage(data.message || 'Starting audit...');
-            setLastAuditTime(Date.now());
-            break;
+            return {
+              ...INITIAL_STATE,
+              isConnected: true,
+              isAuditActive: true,
+              totalCategories: data.totalCategories ?? null,
+              message: data.message || 'Starting audit...',
+            };
 
-          case 'category:start':
-            console.log('[Progress] Category starting:', data.category, 'Progress from server:', data.progress);
-            setCurrentCategory(data.category || null);
-            // Calculate progress based on completed count - more reliable than server-sent value
-            const startProgress = Math.round((completedCountRef.current / TOTAL_CATEGORIES) * 100);
-            console.log('[Progress] Calculated start progress:', startProgress);
-            setProgress(startProgress);
-            setMessage(data.message || '');
-            break;
+          case 'category:start': {
+            if (!data.category) return prev;
+            const next: ProgressState = {
+              ...prev,
+              isAuditActive: true,
+              currentCategory: data.category,
+              categoryOrder: prev.categoryOrder.includes(data.category)
+                ? prev.categoryOrder
+                : [...prev.categoryOrder, data.category],
+              categoryStatus: {
+                ...prev.categoryStatus,
+                [data.category]: { state: 'running' },
+              },
+              message: data.message || `Auditing ${data.category}...`,
+            };
+            return { ...next, progress: computeProgress(next) };
+          }
 
-          case 'category:complete':
-            completedCountRef.current++;
-            console.log('[Progress] Category complete:', data.category, 'Completed count:', completedCountRef.current);
-            if (data.category && data.result) {
-              setCategoryResults(prev => ({
-                ...prev,
-                [data.category!]: data.result
-              }));
-            }
-            // Calculate progress based on completed count
-            const completeProgress = Math.round((completedCountRef.current / TOTAL_CATEGORIES) * 100);
-            console.log('[Progress] Calculated complete progress:', completeProgress);
-            setProgress(completeProgress);
-            setMessage(data.message || '');
-            break;
-            
-          case 'category:error':
-            completedCountRef.current++;
-            console.log('[Progress] Category error:', data.category, 'Completed count:', completedCountRef.current);
-            if (data.category) {
-              setCategoryResults(prev => ({
-                ...prev,
-                [data.category!]: { error: data.error }
-              }));
-            }
-            // Calculate progress based on completed count
-            const errorProgress = Math.round((completedCountRef.current / TOTAL_CATEGORIES) * 100);
-            setProgress(errorProgress);
-            break;
-            
+          case 'category:complete': {
+            if (!data.category) return prev;
+            const next: ProgressState = {
+              ...prev,
+              categoryOrder: prev.categoryOrder.includes(data.category)
+                ? prev.categoryOrder
+                : [...prev.categoryOrder, data.category],
+              categoryStatus: {
+                ...prev.categoryStatus,
+                [data.category]: {
+                  state: 'complete',
+                  score: data.result?.score,
+                  grade: data.result?.grade,
+                  findingsCount: Array.isArray(data.result?.findings)
+                    ? data.result.findings.length
+                    : undefined,
+                },
+              },
+              currentCategory: prev.currentCategory === data.category ? null : prev.currentCategory,
+              message: data.message || '',
+            };
+            return { ...next, progress: computeProgress(next) };
+          }
+
+          case 'category:error': {
+            if (!data.category) return prev;
+            const next: ProgressState = {
+              ...prev,
+              categoryOrder: prev.categoryOrder.includes(data.category)
+                ? prev.categoryOrder
+                : [...prev.categoryOrder, data.category],
+              categoryStatus: {
+                ...prev.categoryStatus,
+                [data.category]: { state: 'error', error: data.error },
+              },
+              currentCategory: prev.currentCategory === data.category ? null : prev.currentCategory,
+            };
+            return { ...next, progress: computeProgress(next) };
+          }
+
+          case 'ai:start':
+            return {
+              ...prev,
+              aiPhase: 'running',
+              aiCurrentCategory: null,
+              message: data.message || 'AI judge reviewing...',
+            };
+
+          case 'ai:category':
+            return {
+              ...prev,
+              aiPhase: 'running',
+              aiCurrentCategory: data.category ?? null,
+              message: data.message || `AI judge reviewing ${data.category}...`,
+            };
+
+          case 'ai:complete':
+            return {
+              ...prev,
+              aiPhase: 'complete',
+              aiCurrentCategory: null,
+              message: data.message || 'AI judge review complete',
+            };
+
+          case 'ai:error':
+            return {
+              ...prev,
+              aiPhase: 'error',
+              aiCurrentCategory: null,
+              aiError: data.error ?? 'AI judge review failed',
+              message: data.message || 'AI judge review failed — scores are deterministic only',
+            };
+
           case 'audit:complete':
-            console.log('[Progress] Received audit:complete event');
-            setProgress(100);
-            setIsComplete(true);
-            setIsAuditActive(false);
-            auditActiveRef.current = false;
-            setCurrentCategory(null);
-            setMessage(data.message || 'Audit completed!');
-            // Redirect to overview page after a delay
-            setTimeout(() => {
-              window.location.hash = '#overview';
-              window.location.reload();
-            }, 2000);
-            break;
+            // Refresh the app's data after a short beat so the completed
+            // state is visible before navigating away.
+            setTimeout(() => completeCallbackRef.current?.(), 1500);
+            return {
+              ...prev,
+              progress: 100,
+              isComplete: true,
+              isAuditActive: false,
+              currentCategory: null,
+              aiCurrentCategory: null,
+              aiPhase: prev.aiPhase === 'running' ? 'complete' : prev.aiPhase,
+              message: data.message || 'Audit completed!',
+            };
+
+          case 'audit:error':
+            return {
+              ...prev,
+              isAuditActive: false,
+              isComplete: false,
+              currentCategory: null,
+              aiCurrentCategory: null,
+              auditError: data.error ?? 'Audit failed',
+              message: data.error ? `Audit failed: ${data.error}` : 'Audit failed',
+            };
+
+          default:
+            return prev;
         }
-      } catch (error) {
-        console.error('Error parsing SSE data:', error);
-      }
+      });
     };
 
-    eventSource.onerror = (error) => {
-      console.error('[Progress] SSE connection error:', error);
-      setIsConnected(false);
+    eventSource.onerror = () => {
+      setState(prev => ({ ...prev, isConnected: false }));
       eventSource.close();
-      // Always try to reconnect
       setTimeout(connect, 5000);
     };
 
     return () => {
       eventSource.close();
-      setIsConnected(false);
+      setState(prev => ({ ...prev, isConnected: false }));
     };
   }, []);
 
@@ -132,14 +249,5 @@ export function useProgress() {
     return cleanup;
   }, [connect]);
 
-  return {
-    isConnected,
-    progress,
-    currentCategory,
-    message,
-    categoryResults,
-    isComplete,
-    lastAuditTime,
-    isAuditActive
-  };
+  return state;
 }

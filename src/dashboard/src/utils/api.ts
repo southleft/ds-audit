@@ -1,36 +1,27 @@
-import { AuditResult } from '@types';
+import type { AuditResult } from '../types';
 
-const API_BASE_URL = '/api';
+export async function fetchAuditResults(refresh = false): Promise<AuditResult> {
+  const params = new URLSearchParams({ t: String(Date.now()) });
+  if (refresh) params.set('refresh', 'true');
 
-export async function fetchAuditResults(): Promise<AuditResult> {
-  const response = await fetch(`${API_BASE_URL}/results`);
+  const response = await fetch(`/api/results?${params.toString()}`, {
+    cache: 'no-cache',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
   if (!response.ok) {
     throw new Error('Failed to fetch audit results');
   }
   return response.json() as Promise<AuditResult>;
 }
 
-export async function fetchConfig(): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/config`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch configuration');
-  }
-  return response.json();
-}
-
-export async function sendChatMessage(message: string, context: any): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/chat`, {
+export async function startAudit(): Promise<{ success: boolean; message: string }> {
+  const response = await fetch('/api/start-audit', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ message, context }),
+    headers: { 'Content-Type': 'application/json' },
   });
-  
+  const body = (await response.json().catch(() => ({}))) as { message?: string };
   if (!response.ok) {
-    throw new Error('Failed to send chat message');
+    throw new Error(body.message || 'Failed to start audit');
   }
-  
-  const data = await response.json() as { response: string };
-  return data.response;
+  return { success: true, message: body.message || 'Audit started' };
 }

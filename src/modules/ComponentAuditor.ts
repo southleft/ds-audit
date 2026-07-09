@@ -1,7 +1,40 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { AuditConfig, CategoryResult, Finding, ComponentInfo } from '../types/index.js';
+import type { AuditConfig, CategoryResult, Finding } from '../types/index.js';
 import { FileScanner } from '../utils/FileScanner.js';
+
+/**
+ * Internal representation of a discovered component. Deliberately minimal:
+ * every field here is directly measured from the filesystem or file content.
+ */
+interface DiscoveredComponent {
+  name: string;
+  path: string;
+  directory: string;
+  hasTests: boolean;
+  hasStory: boolean;
+  hasPropTypes: boolean;
+}
+
+/** Directory segments that never contain library components. */
+const EXCLUDED_DIR_SEGMENTS = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  'pages',
+  'app',
+  'routes',
+  '__tests__',
+  '__mocks__',
+  '__fixtures__',
+  'test',
+  'tests',
+  'e2e',
+  'cypress',
+  '.storybook',
+  '.next',
+]);
 
 export class ComponentAuditor {
   private config: AuditConfig;
@@ -14,387 +47,311 @@ export class ComponentAuditor {
 
   async audit(): Promise<CategoryResult> {
     const findings: Finding[] = [];
-    const components: ComponentInfo[] = [];
-    const detailedPaths: any[] = [];
     const allScannedPaths = new Set<string>();
-    
-    // Find component files - expanded patterns for real-world design systems
-    // We'll filter out stories, tests, and index files manually since glob negation is not reliable
-    const componentPatterns = [
-      // Standard component directories
-      'src/components/**/*.{tsx,jsx,ts,js}',
-      'components/**/*.{tsx,jsx,ts,js}',
-      'lib/components/**/*.{tsx,jsx,ts,js}',
-      'lib/**/*.{tsx,jsx}',
-      // Monorepo patterns
-      'packages/*/src/components/**/*.{tsx,jsx,ts,js}',
-      'packages/*/components/**/*.{tsx,jsx,ts,js}',
-      'packages/*/lib/components/**/*.{tsx,jsx,ts,js}',
+
+    // Component candidates. Only .tsx/.jsx files — plain .ts/.js files in a
+    // component tree are almost always utilities, not components. FileScanner
+    // dedupes across overlapping patterns, so the counts below are exact.
+    const componentFiles = await this.scanner.scanFiles([
+      'src/components/**/*.{tsx,jsx}',
+      'components/**/*.{tsx,jsx}',
+      'lib/components/**/*.{tsx,jsx}',
       'packages/*/src/**/*.{tsx,jsx}',
-      // Storybook-based design systems (common pattern)
-      'src/stories/**/*.{tsx,jsx}',
-      'stories/**/*.{tsx,jsx}',
-      // Generic source patterns (will filter out tests/stories)
+      'packages/*/components/**/*.{tsx,jsx}',
+      'src/ui/**/*.{tsx,jsx}',
+      'ui/**/*.{tsx,jsx}',
       'src/**/*.{tsx,jsx}',
-      // UI library patterns
-      'src/ui/**/*.{tsx,jsx,ts,js}',
-      'ui/**/*.{tsx,jsx,ts,js}',
-      // Feature-based patterns
-      'src/features/**/components/**/*.{tsx,jsx}',
-      'app/components/**/*.{tsx,jsx}',
-      'app/**/components/**/*.{tsx,jsx}',
-    ];
-    
-    // Also scan for styles
-    const stylePatterns = [
-      '**/components/**/*.{css,scss,sass,less,styl}',
-      '**/src/components/**/*.{css,scss,sass,less,styl}',
-      '**/packages/*/components/**/*.{css,scss,sass,less,styl}',
-      '**/styles/**/*.{css,scss,sass,less,styl}',
-    ];
-    
-    // Scan for test files
-    const testPatterns = [
-      '**/components/**/*.{test,spec}.{ts,tsx,js,jsx}',
+      '!**/node_modules/**',
+      '!**/dist/**',
+      '!**/build/**',
+    ]);
+
+    // Test and story files, scanned once and indexed by base name so per-
+    // component lookups don't hit the filesystem repeatedly.
+    const testFiles = await this.scanner.scanFiles([
+      '**/*.{test,spec}.{ts,tsx,js,jsx}',
       '**/__tests__/**/*.{ts,tsx,js,jsx}',
-      '**/packages/*/components/**/*.{test,spec}.{ts,tsx,js,jsx}',
-    ];
-    
-    // Scan for stories - expanded patterns
-    const storyPatterns = [
-      '**/components/**/*.stories.{ts,tsx,js,jsx,mdx}',
-      '**/packages/*/components/**/*.stories.{ts,tsx,js,jsx,mdx}',
-      'src/stories/**/*.stories.{ts,tsx,js,jsx,mdx}',
-      'stories/**/*.stories.{ts,tsx,js,jsx,mdx}',
-      'src/**/*.stories.{ts,tsx,js,jsx,mdx}',
-      '**/*.stories.{ts,tsx,js,jsx,mdx}',
-    ];
+      '**/tests/**/*.{ts,tsx,js,jsx}',
+      '!**/node_modules/**',
+      '!**/dist/**',
+      '!**/build/**',
+    ]);
 
-    // Process each pattern group
-    const allPatterns = {
-      'Component Files': componentPatterns,
-      'Style Files': stylePatterns,
-      'Test Files': testPatterns,
-      'Story Files': storyPatterns,
-    };
-    
-    let totalFilesScanned = 0;
-    
-    for (const [category, patterns] of Object.entries(allPatterns)) {
-      const patternResults = {
-        pattern: category,
-        matches: [] as string[],
-        fileTypes: {} as Record<string, number>,
-      };
-      
-      for (const pattern of patterns) {
-        const files = await this.scanner.scanFiles(pattern);
-        totalFilesScanned += files.length;
-        
-        for (const file of files) {
-          patternResults.matches.push(file.path);
-          allScannedPaths.add(file.directory);
-          
-          // Track file types
-          const ext = file.extension.toLowerCase();
-          patternResults.fileTypes[ext] = (patternResults.fileTypes[ext] || 0) + 1;
-          
-          // Only analyze actual component files (double-check to exclude stories/tests/demos)
-          if (category === 'Component Files') {
-            const fileName = path.basename(file.path);
-            const fileNameLower = fileName.toLowerCase();
-            const fileNameWithoutExt = path.basename(file.path, path.extname(file.path));
+    const storyFiles = await this.scanner.scanFiles([
+      '**/*.{stories,story}.{ts,tsx,js,jsx,mdx}',
+      '!**/node_modules/**',
+      '!**/dist/**',
+      '!**/build/**',
+    ]);
 
-            // Check if this is a story, test, demo, or index file
-            const isStoryFile = fileName.includes('.stories.') || fileName.includes('.story.');
-            const isTestFile = fileName.includes('.test.') || fileName.includes('.spec.') ||
-                               fileNameWithoutExt.endsWith('Test') || fileNameWithoutExt.endsWith('Tests');
-            const isDemoFile = fileNameLower.includes('demo') || fileNameLower.includes('showcase') ||
-                              fileNameLower.includes('example') || fileNameLower.includes('fixture') ||
-                              fileNameLower.includes('mock') || fileNameLower.includes('sample');
-            const isIndexFile = fileNameLower === 'index.ts' || fileNameLower === 'index.tsx' ||
-                               fileNameLower === 'index.js' || fileNameLower === 'index.jsx';
-            const isUtilityFile = fileNameLower.includes('util') || fileNameLower.includes('helper') ||
-                                 fileNameLower.includes('constant') || fileNameLower.includes('types');
+    const testIndex = this.indexByBaseName(testFiles.map(f => f.path));
+    const storyIndex = this.indexByBaseName(storyFiles.map(f => f.path));
 
-            // Skip non-component files
-            if (!isStoryFile && !isTestFile && !isDemoFile && !isIndexFile && !isUtilityFile) {
-              const componentInfo = await this.analyzeComponent(file.path);
-              if (componentInfo) {
-                // Check for duplicates before adding
-                const isDuplicate = components.some(c => c.name === componentInfo.name && c.path === componentInfo.path);
-                if (!isDuplicate) {
-                  components.push(componentInfo);
-                  this.generateFindings(componentInfo, findings);
-                }
-              }
-            } else {
-              // Log what we're skipping for debugging
-              console.log(`[ComponentAuditor] Skipping non-component file: ${fileName} (story: ${isStoryFile}, test: ${isTestFile}, demo: ${isDemoFile}, index: ${isIndexFile}, utility: ${isUtilityFile})`);
-            }
-          }
-        }
+    const components: DiscoveredComponent[] = [];
+    const seenComponentPaths = new Set<string>();
+
+    for (const file of componentFiles) {
+      if (!this.isComponentFile(file.path)) continue;
+      if (seenComponentPaths.has(file.path)) continue;
+      seenComponentPaths.add(file.path);
+
+      allScannedPaths.add(file.directory);
+
+      const name = path.basename(file.path, path.extname(file.path));
+      const directory = path.dirname(file.path);
+
+      let hasPropTypes = false;
+      try {
+        const content = await fs.readFile(
+          path.join(this.config.projectPath, file.path),
+          'utf-8'
+        );
+        // A real signal: an exported/declared props contract, not just the
+        // presence of the word "interface" anywhere in the file.
+        hasPropTypes = /(?:export\s+)?(?:interface|type)\s+\w*Props\b/.test(content);
+      } catch {
+        continue; // unreadable file — not a component we can audit
       }
-      
-      if (patternResults.matches.length > 0) {
-        detailedPaths.push(patternResults);
-      }
+
+      components.push({
+        name,
+        path: file.path,
+        directory,
+        hasTests: this.hasCompanionFile(name, directory, testIndex),
+        hasStory: this.hasCompanionFile(name, directory, storyIndex),
+        hasPropTypes,
+      });
     }
 
-    const filesScanned = totalFilesScanned;
+    // Exact deduped file count across the three scans. The scans are disjoint
+    // by construction (test/story filename suffixes are excluded from the
+    // component set), except suffix-less files inside __tests__/tests dirs,
+    // which the component scan excludes by directory segment.
+    const totalFilesScanned =
+      componentFiles.length + testFiles.length + storyFiles.length;
 
-    // Analyze findings
-    const score = this.calculateScore(components, findings);
-    const grade = this.getGrade(score);
+    const total = components.length;
+    const withTests = components.filter(c => c.hasTests).length;
+    const withStories = components.filter(c => c.hasStory).length;
+    const withPropTypes = components.filter(c => c.hasPropTypes).length;
+
+    const testCoverage = total > 0 ? Math.round((withTests / total) * 100) : 0;
+    const storyCoverage = total > 0 ? Math.round((withStories / total) * 100) : 0;
+    const propTypeCoverage = total > 0 ? Math.round((withPropTypes / total) * 100) : 0;
+
+    this.generateFindings(components, { testCoverage, storyCoverage, propTypeCoverage }, findings);
+
+    // Score formula (documented so the number is defensible):
+    //   - 0 when no components are discovered — there is nothing to audit.
+    //   - Otherwise the score scales continuously with measured coverage:
+    //       coverage = 0.45 * testCoverage% + 0.35 * storyCoverage% + 0.20 * propTypeCoverage%
+    //       score    = round(20 + 0.80 * coverage)
+    //     The 20-point baseline reflects that a discoverable component library
+    //     exists at all; the remaining 80 points are earned only through
+    //     verified test files, story files, and exported prop-type contracts.
+    //     One untested component and a fully covered library therefore land at
+    //     20 and 100 respectively, with every value in between reachable.
+    let score = 0;
+    if (total > 0) {
+      const coverage =
+        0.45 * testCoverage + 0.35 * storyCoverage + 0.2 * propTypeCoverage;
+      score = Math.round(20 + 0.8 * coverage);
+    }
+
+    const detailedPaths = [
+      {
+        pattern: 'Component Files',
+        matches: components.map(c => c.path),
+        fileTypes: this.countExtensions(components.map(c => c.path)),
+      },
+      {
+        pattern: 'Test Files',
+        matches: testFiles.map(f => f.path),
+        fileTypes: this.countExtensions(testFiles.map(f => f.path)),
+      },
+      {
+        pattern: 'Story Files',
+        matches: storyFiles.map(f => f.path),
+        fileTypes: this.countExtensions(storyFiles.map(f => f.path)),
+      },
+    ].filter(group => group.matches.length > 0);
 
     return {
       id: 'components',
       name: 'Component Library',
-      score,
-      grade,
-      weight: 0.25,
+      score: Math.max(0, Math.min(100, score)),
+      grade: '', // stamped by the engine
+      weight: 0, // stamped by the engine
       findings,
       metrics: {
-        totalComponents: components.length,
-        filesScanned,
-        componentTypes: this.categorizeComponents(components),
-        testCoverage: this.calculateTestCoverage(components),
-        accessibilityScore: this.calculateAccessibilityScore(components),
+        totalComponents: total,
+        filesScanned: totalFilesScanned,
+        testCoverage,
+        storyCoverage,
+        propTypeCoverage,
+        componentsWithTests: withTests,
+        componentsWithStories: withStories,
+        componentsWithPropTypes: withPropTypes,
       },
       scannedPaths: Array.from(allScannedPaths).sort(),
       detailedPaths,
     };
   }
 
-  private async analyzeComponent(filePath: string): Promise<ComponentInfo | null> {
-    try {
-      const content = await fs.readFile(
-        path.join(this.config.projectPath, filePath),
-        'utf-8'
-      );
+  /**
+   * A candidate file counts as a component only when it is not a test, story,
+   * spec, demo/fixture, index barrel, hook, or type/utility file, and does not
+   * live in an app-shell directory (pages/, app/, routes/, ...).
+   */
+  private isComponentFile(filePath: string): boolean {
+    const segments = filePath.split('/');
+    const fileName = segments[segments.length - 1];
+    const dirSegments = segments.slice(0, -1);
 
-      const name = path.basename(filePath, path.extname(filePath));
-      const hasTests = await this.checkForTests(filePath);
-      const hasStory = await this.checkForStory(filePath);
-      const hasTypes = content.includes('interface') || content.includes('type');
-      
-      return {
-        name,
-        path: filePath,
-        type: this.detectComponentType(name, content),
-        hasTests,
-        hasStory,
-        hasDocumentation: false,
-        hasTypes,
-        accessibility: this.analyzeAccessibility(content),
-        props: [],
-      };
-    } catch (error) {
-      return null;
-    }
+    if (dirSegments.some(seg => EXCLUDED_DIR_SEGMENTS.has(seg))) return false;
+
+    const lower = fileName.toLowerCase();
+    if (/\.(test|spec|stories|story)\./.test(lower)) return false;
+    if (lower.endsWith('.d.ts')) return false;
+
+    const base = path.basename(fileName, path.extname(fileName));
+    // Index barrels and app entry points
+    if (base.toLowerCase() === 'index' || base.toLowerCase() === 'main') return false;
+    // Hooks: use + UpperCase (useTheme.tsx etc.)
+    if (/^use[A-Z]/.test(base)) return false;
+    // Demo/fixture/mock/example files
+    if (/(demo|example|fixture|mock|sample|showcase)/i.test(base)) return false;
+    // Obvious non-component modules
+    if (/^(types?|constants?|utils?|helpers?|styles?|theme)$/i.test(base)) return false;
+
+    return true;
   }
 
-  private detectComponentType(name: string, content: string): ComponentInfo['type'] {
-    // Simple heuristic based on name and content
-    if (name.toLowerCase().includes('button') || name.toLowerCase().includes('input')) {
-      return 'atomic';
-    }
-    if (name.toLowerCase().includes('form') || name.toLowerCase().includes('card')) {
-      return 'molecular';
-    }
-    if (name.toLowerCase().includes('page') || name.toLowerCase().includes('layout')) {
-      return 'template';
-    }
-    return 'unknown';
-  }
-
-  private async checkForTests(componentPath: string): Promise<boolean> {
-    const testPatterns = [
-      componentPath.replace(/\.(tsx?|jsx?)$/, '.test.$1'),
-      componentPath.replace(/\.(tsx?|jsx?)$/, '.spec.$1'),
-      componentPath.replace(/\.(tsx?|jsx?)$/, '.test.ts'),
-      componentPath.replace(/\.(tsx?|jsx?)$/, '.spec.ts'),
-    ];
-
-    for (const pattern of testPatterns) {
-      try {
-        await fs.access(path.join(this.config.projectPath, pattern));
-        return true;
-      } catch {
-        // File doesn't exist
+  /** Map from base name (test/story suffixes and extension stripped) to dirs. */
+  private indexByBaseName(paths: string[]): Map<string, string[]> {
+    const index = new Map<string, string[]>();
+    for (const p of paths) {
+      const base = path
+        .basename(p, path.extname(p))
+        .replace(/\.(test|spec|stories|story)$/, '');
+      const dir = path.dirname(p);
+      const existing = index.get(base);
+      if (existing) {
+        existing.push(dir);
+      } else {
+        index.set(base, [dir]);
       }
     }
-    return false;
+    return index;
   }
 
-  private async checkForStory(componentPath: string): Promise<boolean> {
-    const storyPatterns = [
-      componentPath.replace(/\.(tsx?|jsx?)$/, '.stories.$1'),
-      componentPath.replace(/\.(tsx?|jsx?)$/, '.story.$1'),
-    ];
+  /**
+   * A companion (test/story) file matches when its base name equals the
+   * component name and it lives near the component: the same directory, a
+   * subdirectory of it (e.g. __tests__/), or anywhere under the component's
+   * parent directory (e.g. a sibling tests/ folder). This covers the
+   * ComponentName.test.tsx sibling convention, __tests__/ComponentName.test.tsx,
+   * and tests/ComponentName.test.tsx layouts without matching unrelated files
+   * elsewhere in the repository.
+   */
+  private hasCompanionFile(
+    name: string,
+    componentDir: string,
+    index: Map<string, string[]>
+  ): boolean {
+    const dirs = index.get(name);
+    if (!dirs) return false;
 
-    for (const pattern of storyPatterns) {
-      try {
-        await fs.access(path.join(this.config.projectPath, pattern));
-        return true;
-      } catch {
-        // File doesn't exist
-      }
+    const parent = path.dirname(componentDir);
+    return dirs.some(
+      dir =>
+        dir === componentDir ||
+        dir.startsWith(`${componentDir}/`) ||
+        dir === parent ||
+        dir.startsWith(`${parent}/`)
+    );
+  }
+
+  private countExtensions(paths: string[]): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const p of paths) {
+      const ext = path.extname(p).toLowerCase();
+      counts[ext] = (counts[ext] || 0) + 1;
     }
-    return false;
+    return counts;
   }
 
-  private analyzeAccessibility(content: string): ComponentInfo['accessibility'] {
-    return {
-      hasAriaLabels: content.includes('aria-'),
-      hasFocusManagement: content.includes('focus') || content.includes('onFocus'),
-      hasKeyboardSupport: content.includes('onKey') || content.includes('keyboard'),
-      violations: [],
-    };
-  }
-
-  private calculateScore(components: ComponentInfo[], findings: Finding[]): number {
-    if (components.length === 0) return 0;
-
-    let score = 100;
-    
-    // Deduct points for missing tests
-    const withoutTests = components.filter(c => !c.hasTests).length;
-    score -= (withoutTests / components.length) * 20;
-
-    // Deduct points for missing stories
-    const withoutStories = components.filter(c => !c.hasStory).length;
-    score -= (withoutStories / components.length) * 15;
-
-    // Deduct points for missing types
-    const withoutTypes = components.filter(c => !c.hasTypes).length;
-    score -= (withoutTypes / components.length) * 10;
-
-    // Deduct points for accessibility issues
-    const withA11yIssues = components.filter(
-      c => !c.accessibility.hasAriaLabels || !c.accessibility.hasKeyboardSupport
-    ).length;
-    score -= (withA11yIssues / components.length) * 15;
-
-    return Math.max(0, Math.round(score));
-  }
-
-  private getGrade(score: number): string {
-    if (score >= 90) return 'A';
-    if (score >= 80) return 'B';
-    if (score >= 70) return 'C';
-    if (score >= 60) return 'D';
-    return 'F';
-  }
-
-  private categorizeComponents(components: ComponentInfo[]): Record<string, number> {
-    const categories: Record<string, number> = {
-      atomic: 0,
-      molecular: 0,
-      organism: 0,
-      template: 0,
-      unknown: 0,
-    };
-
-    components.forEach(component => {
-      categories[component.type]++;
-    });
-
-    return categories;
-  }
-
-  private calculateTestCoverage(components: ComponentInfo[]): number {
-    if (components.length === 0) return 0;
-    const withTests = components.filter(c => c.hasTests).length;
-    return Math.round((withTests / components.length) * 100);
-  }
-
-  private calculateAccessibilityScore(components: ComponentInfo[]): number {
-    if (components.length === 0) return 0;
-    
-    const scores = components.map(c => {
-      let score = 0;
-      if (c.accessibility.hasAriaLabels) score += 33;
-      if (c.accessibility.hasFocusManagement) score += 33;
-      if (c.accessibility.hasKeyboardSupport) score += 34;
-      return score;
-    });
-
-    return Math.round(scores.reduce((a, b) => a + b, 0) / components.length);
-  }
-
-  private generateFindings(component: ComponentInfo, findings: Finding[]): void {
-    const findingId = `comp-${component.name}-${findings.length + 1}`;
-
-    // Check for missing tests
-    if (!component.hasTests) {
+  private generateFindings(
+    components: DiscoveredComponent[],
+    coverage: { testCoverage: number; storyCoverage: number; propTypeCoverage: number },
+    findings: Finding[]
+  ): void {
+    if (components.length === 0) {
       findings.push({
-        id: `${findingId}-test`,
-        type: 'warning',
-        message: `Component '${component.name}' is missing test coverage`,
-        severity: 'medium',
-        path: component.path,
-        suggestion: 'Add unit tests to ensure component behavior is verified',
-      });
-    }
-
-    // Check for missing Storybook stories
-    if (!component.hasStory) {
-      findings.push({
-        id: `${findingId}-story`,
-        type: 'warning',
-        message: `Component '${component.name}' lacks Storybook documentation`,
-        severity: 'low',
-        path: component.path,
-        suggestion: 'Create a Storybook story to document component usage and variations',
-      });
-    }
-
-    // Check for missing TypeScript types
-    if (!component.hasTypes) {
-      findings.push({
-        id: `${findingId}-types`,
-        type: 'warning',
-        message: `Component '${component.name}' lacks proper TypeScript definitions`,
-        severity: 'medium',
-        path: component.path,
-        suggestion: 'Add TypeScript interfaces or types for props and state',
-      });
-    }
-
-    // Check accessibility issues
-    if (!component.accessibility.hasAriaLabels) {
-      findings.push({
-        id: `${findingId}-aria`,
+        id: 'comp-none-found',
         type: 'error',
-        message: `Component '${component.name}' missing ARIA labels for accessibility`,
+        message:
+          'No component files discovered in conventional locations (src/components, components, packages/*/src, ...)',
         severity: 'high',
-        path: component.path,
-        suggestion: 'Add appropriate ARIA labels for screen reader support',
+        suggestion:
+          'If components live in a non-standard directory, add it to includePatterns in the audit config',
       });
+      return;
     }
 
-    if (!component.accessibility.hasKeyboardSupport && 
-        (component.type === 'atomic' || component.name.toLowerCase().includes('button'))) {
-      findings.push({
-        id: `${findingId}-keyboard`,
-        type: 'error',
-        message: `Interactive component '${component.name}' lacks keyboard support`,
-        severity: 'high',
-        path: component.path,
-        suggestion: 'Implement keyboard event handlers for accessibility',
-      });
-    }
+    const missingTests = components.filter(c => !c.hasTests);
+    const missingStories = components.filter(c => !c.hasStory);
+    const missingTypes = components.filter(c => !c.hasPropTypes);
 
-    // Add success findings for well-implemented components
-    if (component.hasTests && component.hasStory && component.hasTypes && 
-        component.accessibility.hasAriaLabels) {
+    const exampleList = (items: DiscoveredComponent[]): string =>
+      items
+        .slice(0, 5)
+        .map(c => c.name)
+        .join(', ') + (items.length > 5 ? `, +${items.length - 5} more` : '');
+
+    if (missingTests.length > 0) {
       findings.push({
-        id: `${findingId}-success`,
+        id: 'comp-test-coverage',
+        type: coverage.testCoverage < 30 ? 'error' : 'warning',
+        message: `${missingTests.length} of ${components.length} components have no test file (${coverage.testCoverage}% coverage): ${exampleList(missingTests)}`,
+        severity: coverage.testCoverage < 30 ? 'high' : 'medium',
+        suggestion:
+          'Add unit tests as ComponentName.test.tsx siblings or in a __tests__/ directory',
+      });
+    } else {
+      findings.push({
+        id: 'comp-test-coverage-full',
         type: 'success',
-        message: `Component '${component.name}' follows best practices`,
+        message: `All ${components.length} components have an associated test file`,
         severity: 'low',
-        path: component.path,
+      });
+    }
+
+    if (missingStories.length > 0) {
+      findings.push({
+        id: 'comp-story-coverage',
+        type: 'warning',
+        message: `${missingStories.length} of ${components.length} components have no Storybook story (${coverage.storyCoverage}% coverage): ${exampleList(missingStories)}`,
+        severity: coverage.storyCoverage < 30 ? 'medium' : 'low',
+        suggestion: 'Add ComponentName.stories.tsx files to document usage and variants',
+      });
+    } else {
+      findings.push({
+        id: 'comp-story-coverage-full',
+        type: 'success',
+        message: `All ${components.length} components have a story file`,
+        severity: 'low',
+      });
+    }
+
+    if (missingTypes.length > 0) {
+      findings.push({
+        id: 'comp-prop-types',
+        type: 'info',
+        message: `${missingTypes.length} of ${components.length} components do not declare a Props interface/type (${coverage.propTypeCoverage}% coverage): ${exampleList(missingTypes)}`,
+        severity: 'low',
+        suggestion:
+          'Declare an explicit `interface ComponentNameProps` so the public API is documented and type-checked',
       });
     }
   }

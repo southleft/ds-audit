@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { glob } from 'glob';
 
 export interface ExternalDesignSystem {
   name: string;
@@ -15,11 +16,13 @@ export interface ExternalDSAnalysis {
   systems: ExternalDesignSystem[];
   mode: 'pure-local' | 'hybrid' | 'pure-external';
   localComponentCount: number;
+  /** Count of DISTINCT components actually imported from external design
+   * systems, measured by scanning import statements — never estimated. */
   externalComponentCount: number;
   themeCustomizations: ThemeCustomization[];
   scoringAdjustment: {
-    componentWeight: number;  // Reduced weight for component library score
-    tokenWeight: number;      // Increased weight for token/theme coverage
+    componentWeight: number; // Reduced weight for component library score
+    tokenWeight: number; // Increased weight for token/theme coverage
     reason: string;
   };
 }
@@ -132,40 +135,38 @@ const KNOWN_DESIGN_SYSTEMS: Record<string, Omit<ExternalDesignSystem, 'version'>
   },
 };
 
-// Patterns for theme customization detection
-const THEME_PATTERNS = {
-  'css-variables': [
-    '**/theme.css',
-    '**/theme.scss',
-    '**/variables.css',
-    '**/variables.scss',
-    '**/_variables.scss',
-    '**/tokens.css',
-  ],
+// Patterns for theme customization detection. Each group's globs are scanned
+// for real files; a file is classified once (first matching group wins).
+const THEME_PATTERNS: Record<ThemeCustomization['type'], string[]> = {
   'theme-config': [
-    '**/theme.ts',
-    '**/theme.tsx',
-    '**/theme.js',
-    '**/theme/index.ts',
-    '**/theme/index.tsx',
+    '**/theme.{ts,tsx,js}',
+    '**/theme/index.{ts,tsx}',
     '**/ThemeProvider.tsx',
     '**/mantine.config.ts',
-    '**/tailwind.config.js',
-    '**/tailwind.config.ts',
-  ],
-  'style-overrides': [
-    '**/overrides.css',
-    '**/overrides.scss',
-    '**/custom.css',
-    '**/custom.scss',
+    'tailwind.config.{js,ts,cjs,mjs}',
   ],
   'token-mapping': [
     '**/tokens.json',
     '**/tokens.ts',
     '**/design-tokens.json',
-    '**/style-dictionary.config.js',
+    '**/style-dictionary.config.{js,cjs,mjs}',
   ],
+  'css-variables': [
+    '**/theme.{css,scss}',
+    '**/variables.{css,scss}',
+    '**/_variables.scss',
+    '**/tokens.css',
+  ],
+  'style-overrides': ['**/overrides.{css,scss}', '**/custom.{css,scss}'],
 };
+
+const SCAN_IGNORE = [
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/coverage/**',
+  '**/.next/**',
+];
 
 export class ExternalDSDetector {
   private projectPath: string;
@@ -177,11 +178,11 @@ export class ExternalDSDetector {
   async analyze(localComponentCount: number): Promise<ExternalDSAnalysis> {
     const detectedSystems = await this.detectExternalSystems();
     const themeCustomizations = await this.detectThemeCustomizations();
-    const externalComponentCount = await this.estimateExternalComponentUsage(detectedSystems);
+    const externalComponentCount = await this.countExternalComponentImports(detectedSystems);
 
     const detected = detectedSystems.length > 0;
     const mode = this.determineMode(localComponentCount, externalComponentCount, detected);
-    const scoringAdjustment = this.calculateScoringAdjustment(mode, themeCustomizations.length);
+    const scoringAdjustment = this.calculateScoringAdjustment(mode);
 
     return {
       detected,
@@ -194,60 +195,146 @@ export class ExternalDSDetector {
     };
   }
 
+  /**
+   * Detect known external design systems from dependencies aggregated across
+   * EVERY package.json in the repo (monorepo-aware), not just the root.
+   */
   private async detectExternalSystems(): Promise<ExternalDesignSystem[]> {
-    const detected: ExternalDesignSystem[] = [];
+    const detected = new Map<string, ExternalDesignSystem>();
 
-    try {
-      const packageJsonPath = path.join(this.projectPath, 'package.json');
-      const content = await fs.readFile(packageJsonPath, 'utf-8');
-      const packageJson = JSON.parse(content);
-      const allDeps = {
-        ...packageJson.dependencies,
-        ...packageJson.devDependencies,
-      };
+    const packageJsonPaths = await glob('**/package.json', {
+      cwd: this.projectPath,
+      ignore: SCAN_IGNORE,
+      absolute: false,
+    });
 
-      for (const [pkgName, version] of Object.entries(allDeps)) {
-        const knownDS = KNOWN_DESIGN_SYSTEMS[pkgName];
-        if (knownDS) {
-          detected.push({
-            ...knownDS,
-            version: version as string,
-          });
+    for (const relPath of packageJsonPaths) {
+      try {
+        const content = await fs.readFile(path.join(this.projectPath, relPath), 'utf-8');
+        const packageJson = JSON.parse(content);
+        const allDeps: Record<string, string> = {
+          ...packageJson.dependencies,
+          ...packageJson.devDependencies,
+        };
+
+        for (const [pkgName, version] of Object.entries(allDeps)) {
+          const knownDS = KNOWN_DESIGN_SYSTEMS[pkgName];
+          if (knownDS && !detected.has(pkgName)) {
+            detected.set(pkgName, { ...knownDS, version });
+          }
         }
+      } catch {
+        // Unreadable or unparseable package.json — skip
       }
-    } catch (error) {
-      // Package.json not found or parse error
     }
 
-    return detected;
+    return Array.from(detected.values());
   }
 
+  /**
+   * Count REAL external component usage: scan source files for import
+   * statements from the detected design system packages and count the
+   * distinct component identifiers imported. No hardcoded per-library
+   * estimates — an installed-but-unused library counts as zero.
+   */
+  private async countExternalComponentImports(
+    systems: ExternalDesignSystem[]
+  ): Promise<number> {
+    const componentPackages = systems.filter(s => s.type === 'component-library');
+    if (componentPackages.length === 0) return 0;
+
+    const sourceFiles = await glob('**/*.{tsx,jsx,ts,js}', {
+      cwd: this.projectPath,
+      ignore: SCAN_IGNORE,
+      absolute: false,
+    });
+
+    const distinctImports = new Set<string>();
+    const importRegex =
+      /import\s+(?:type\s+)?([^;'"]+?)\s+from\s+['"]([^'"]+)['"]/g;
+
+    for (const relPath of sourceFiles) {
+      let content: string;
+      try {
+        content = await fs.readFile(path.join(this.projectPath, relPath), 'utf-8');
+      } catch {
+        continue;
+      }
+
+      for (const match of content.matchAll(importRegex)) {
+        const clause = match[1];
+        const moduleName = match[2];
+
+        const pkg = componentPackages.find(
+          s => moduleName === s.packageName || moduleName.startsWith(`${s.packageName}/`)
+        );
+        if (!pkg) continue;
+
+        for (const name of this.extractImportedNames(clause)) {
+          // Components are PascalCase identifiers; hooks/utilities are not.
+          if (/^[A-Z]/.test(name)) {
+            distinctImports.add(`${pkg.packageName}:${name}`);
+          }
+        }
+      }
+    }
+
+    return distinctImports.size;
+  }
+
+  /** Extract identifiers from an import clause: default, named, and aliases. */
+  private extractImportedNames(clause: string): string[] {
+    const names: string[] = [];
+    const trimmed = clause.trim();
+
+    // Named imports inside braces (respect `as` aliases: count the ORIGINAL
+    // exported name so aliasing doesn't inflate the distinct count).
+    const braceMatch = trimmed.match(/\{([^}]*)\}/);
+    if (braceMatch) {
+      for (const part of braceMatch[1].split(',')) {
+        const original = part.trim().split(/\s+as\s+/)[0].replace(/^type\s+/, '').trim();
+        if (original) names.push(original);
+      }
+    }
+
+    // Default import (before any brace)
+    const beforeBrace = trimmed.split('{')[0].replace(/,\s*$/, '').trim();
+    if (beforeBrace && !beforeBrace.startsWith('*') && /^[A-Za-z_$][\w$]*$/.test(beforeBrace)) {
+      names.push(beforeBrace);
+    }
+
+    return names;
+  }
+
+  /**
+   * Find theme customization files with real globs. Each file is reported
+   * once — the previous implementation pushed the same file repeatedly (once
+   * per pattern per type).
+   */
   private async detectThemeCustomizations(): Promise<ThemeCustomization[]> {
     const customizations: ThemeCustomization[] = [];
+    const seenFiles = new Set<string>();
 
     for (const [type, patterns] of Object.entries(THEME_PATTERNS)) {
       for (const pattern of patterns) {
-        // Simple check for common theme files
-        const filesToCheck = [
-          'src/theme.ts',
-          'src/theme.tsx',
-          'src/theme/index.ts',
-          'src/styles/variables.scss',
-          'src/styles/tokens.css',
-          'tailwind.config.js',
-          'tailwind.config.ts',
-          'mantine.config.ts',
-        ];
+        let matches: string[];
+        try {
+          matches = await glob(pattern, {
+            cwd: this.projectPath,
+            ignore: SCAN_IGNORE,
+            absolute: false,
+          });
+        } catch {
+          continue;
+        }
 
-        for (const file of filesToCheck) {
+        for (const file of matches) {
+          if (seenFiles.has(file)) continue;
+          seenFiles.add(file);
+
           try {
-            const filePath = path.join(this.projectPath, file);
-            await fs.access(filePath);
-
-            // File exists, check if it's a customization
-            const content = await fs.readFile(filePath, 'utf-8');
+            const content = await fs.readFile(path.join(this.projectPath, file), 'utf-8');
             const description = this.describeCustomization(file, content);
-
             if (description) {
               customizations.push({
                 type: type as ThemeCustomization['type'],
@@ -256,7 +343,7 @@ export class ExternalDSDetector {
               });
             }
           } catch {
-            // File doesn't exist
+            // Unreadable file — skip
           }
         }
       }
@@ -274,7 +361,11 @@ export class ExternalDSDetector {
     }
 
     if (file.includes('theme') || file.includes('Theme')) {
-      if (content.includes('createTheme') || content.includes('MantineProvider') || content.includes('ThemeProvider')) {
+      if (
+        content.includes('createTheme') ||
+        content.includes('MantineProvider') ||
+        content.includes('ThemeProvider')
+      ) {
         return 'Custom theme configuration for component library';
       }
     }
@@ -292,35 +383,20 @@ export class ExternalDSDetector {
     return null;
   }
 
-  private async estimateExternalComponentUsage(systems: ExternalDesignSystem[]): Promise<number> {
-    // Estimate based on known component counts per design system
-    const componentCounts: Record<string, number> = {
-      '@mantine/core': 80,
-      '@mui/material': 60,
-      '@chakra-ui/react': 50,
-      'antd': 70,
-      '@radix-ui/themes': 30,
-      'primereact': 90,
-      '@fluentui/react': 40,
-      '@carbon/react': 40,
-      'semantic-ui-react': 50,
-      '@blueprintjs/core': 45,
-      'react-bootstrap': 40,
-      'daisyui': 55,
-      '@headlessui/react': 10,
-    };
-
-    return systems.reduce((total, system) => {
-      return total + (componentCounts[system.packageName] || 20);
-    }, 0);
-  }
-
+  /**
+   * Mode from REAL counts on both sides:
+   *   - no external DS detected, or detected but zero components actually
+   *     imported → pure-local (installed-but-unused shouldn't shift weights)
+   *   - external imports and no local components → pure-external
+   *   - otherwise by the external share of all distinct components in use:
+   *     >= 80% external → pure-external, >= 20% → hybrid, else pure-local
+   */
   private determineMode(
     localCount: number,
     externalCount: number,
     hasExternalDS: boolean
   ): ExternalDSAnalysis['mode'] {
-    if (!hasExternalDS) {
+    if (!hasExternalDS || externalCount === 0) {
       return 'pure-local';
     }
 
@@ -328,38 +404,37 @@ export class ExternalDSDetector {
       return 'pure-external';
     }
 
-    // If local components are less than 20% of external, consider it mostly external
-    if (localCount < externalCount * 0.2) {
-      return 'pure-external';
-    }
-
-    return 'hybrid';
+    const externalShare = externalCount / (externalCount + localCount);
+    if (externalShare >= 0.8) return 'pure-external';
+    if (externalShare >= 0.2) return 'hybrid';
+    return 'pure-local';
   }
 
   private calculateScoringAdjustment(
-    mode: ExternalDSAnalysis['mode'],
-    themeCustomizationCount: number
+    mode: ExternalDSAnalysis['mode']
   ): ExternalDSAnalysis['scoringAdjustment'] {
     switch (mode) {
       case 'pure-external':
         return {
-          componentWeight: 0.1,  // Component library score is much less important
-          tokenWeight: 0.35,     // Token/theming is more important
-          reason: 'Using external design system - scoring emphasizes theming and token customization',
+          componentWeight: 0.1, // Component library score is much less important
+          tokenWeight: 0.35, // Token/theming is more important
+          reason:
+            'Using external design system - scoring emphasizes theming and token customization',
         };
 
       case 'hybrid':
         return {
-          componentWeight: 0.15,  // Reduced but still relevant
-          tokenWeight: 0.30,      // Token weight increased
-          reason: 'Hybrid design system detected - balanced scoring between local components and theming',
+          componentWeight: 0.15, // Reduced but still relevant
+          tokenWeight: 0.3, // Token weight increased
+          reason:
+            'Hybrid design system detected - balanced scoring between local components and theming',
         };
 
       case 'pure-local':
       default:
         return {
-          componentWeight: 0.25,  // Standard component weight
-          tokenWeight: 0.20,      // Standard token weight
+          componentWeight: 0.25, // Standard component weight
+          tokenWeight: 0.2, // Standard token weight
           reason: 'Local design system - standard component-focused scoring',
         };
     }
@@ -379,12 +454,15 @@ export class ExternalDSDetector {
 
     switch (analysis.mode) {
       case 'pure-external':
-        summary += `This project primarily uses external components from ${systemNames}. `;
+        summary += `This project imports ${analysis.externalComponentCount} distinct components from ${systemNames}. `;
         summary += `The audit focuses on theming, token architecture, and customization rather than local component implementation.\n`;
         break;
       case 'hybrid':
-        summary += `This project combines ${systemNames} with ${analysis.localComponentCount} local components. `;
+        summary += `This project combines ${analysis.externalComponentCount} distinct imported components from ${systemNames} with ${analysis.localComponentCount} local components. `;
         summary += `The audit evaluates both the local component quality and theme/token customization layer.\n`;
+        break;
+      case 'pure-local':
+        summary += `${systemNames} is present in dependencies, but component usage is negligible — the audit uses standard local-component scoring.\n`;
         break;
     }
 

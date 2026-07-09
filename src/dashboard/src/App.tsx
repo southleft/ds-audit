@@ -1,149 +1,161 @@
-import React, { useState, useEffect } from 'react';
-import { AppShell, Burger } from '@mantine/core';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, AppShell, Burger, Center, Group, Loader, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import Sidebar from './components/Sidebar';
+import Sidebar, { type Section } from './components/Sidebar';
 import Overview from './components/Overview';
 import Categories from './components/Categories';
 import ActionPlan from './components/ActionPlan';
-import Recommendations from './components/Recommendations';
 import Progress from './components/Progress';
 import Export from './components/Export';
-import { AuditResult } from '@types';
+import type { AuditResult } from './types';
 import { fetchAuditResults } from './utils/api';
-import { exportToPDF, exportCurrentView } from './utils/pdfExport';
-import './App.css';
 
-type Section = 'overview' | 'categories' | 'action-plan' | 'recommendations' | 'progress' | 'export';
+const SECTIONS: Section[] = ['overview', 'categories', 'action-plan', 'progress', 'export'];
+
+function sectionFromHash(): Section | null {
+  const hash = window.location.hash.replace('#', '');
+  // The old Recommendations view merged into the Action Plan
+  if (hash === 'recommendations') return 'action-plan';
+  return SECTIONS.includes(hash as Section) ? (hash as Section) : null;
+}
 
 function App() {
-  const [opened, { toggle }] = useDisclosure();
-  const [currentSection, setCurrentSection] = useState<Section>('overview');
+  const [opened, { toggle, close }] = useDisclosure();
+  const [currentSection, setCurrentSection] = useState<Section>(
+    () => sectionFromHash() ?? 'overview'
+  );
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadAuditResults();
-  }, []); // Only load once on mount
-  
-  // Handle section-specific behavior in a separate effect
-  useEffect(() => {
-    // Don't refresh data automatically - it causes disconnections
-    // Users can manually refresh if needed
-    
-    // Handle hash-based navigation
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '') as Section;
-      if (hash && ['overview', 'categories', 'action-plan', 'recommendations', 'progress', 'export'].includes(hash)) {
-        setCurrentSection(hash);
-      }
-    };
-    
-    // Handle custom navigation events from overview page
-    const handleNavigateToCategory = (event: CustomEvent) => {
-      setCurrentSection('categories');
-      // Store the category name for highlighting
-      sessionStorage.setItem('highlightCategory', event.detail.categoryName);
-    };
-    
-    window.addEventListener('hashchange', handleHashChange);
-    window.addEventListener('navigateToCategory', handleNavigateToCategory as EventListener);
-    
-    // Check initial hash
-    handleHashChange();
-    
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-      window.removeEventListener('navigateToCategory', handleNavigateToCategory as EventListener);
-    };
-  }, []);
-
-  // Redirect to progress page if audit data is incomplete
-  useEffect(() => {
-    if (!loading && auditResult) {
-      // Check if audit is incomplete (no categories or empty categories)
-      if (!auditResult.categories || auditResult.categories.length === 0) {
-        // Only redirect if not already on progress page
-        if (currentSection !== 'progress') {
-          setCurrentSection('progress');
-          window.location.hash = 'progress';
-        }
-      }
-    }
-  }, [loading, auditResult, currentSection]);
-
-  const loadAuditResults = async () => {
+  const loadAuditResults = useCallback(async (refresh = false) => {
     try {
       setLoading(true);
-      // Always fetch fresh results with cache-busting
-      const response = await fetch(`/api/results?t=${Date.now()}`, {
-        cache: 'no-cache',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch audit results');
-      }
-      const freshResults = await response.json();
-      setAuditResult(freshResults);
+      setError(null);
+      const results = await fetchAuditResults(refresh);
+      setAuditResult(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load audit results');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadAuditResults();
+  }, [loadAuditResults]);
+
+  // Hash-based navigation (e.g. the CLI opens /#progress)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const section = sectionFromHash();
+      if (section) setCurrentSection(section);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange();
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // With no completed audit yet, the progress view is the only useful one
+  useEffect(() => {
+    if (!loading && auditResult && (!auditResult.categories || auditResult.categories.length === 0)) {
+      if (currentSection !== 'progress') {
+        setCurrentSection('progress');
+        window.location.hash = 'progress';
+      }
+    }
+  }, [loading, auditResult, currentSection]);
+
+  const navigate = (section: Section) => {
+    setCurrentSection(section);
+    window.location.hash = section;
+    close();
   };
+
+  const openCategory = (categoryId: string) => {
+    setSelectedCategoryId(categoryId);
+    navigate('categories');
+  };
+
+  const handleAuditComplete = useCallback(() => {
+    // Fresh results from disk, then show the overview
+    loadAuditResults(true).then(() => {
+      setCurrentSection('overview');
+      window.location.hash = 'overview';
+    });
+  }, [loadAuditResults]);
 
   const renderSection = () => {
     if (loading) {
-      return <div className="loading">Loading audit results...</div>;
+      return (
+        <Center h={300}>
+          <Group gap="sm">
+            <Loader size="sm" />
+            <Text c="dimmed">Loading audit results...</Text>
+          </Group>
+        </Center>
+      );
     }
 
     if (error || !auditResult) {
-      return <div className="error">Error: {error || 'No audit results available'}</div>;
+      return (
+        <Alert color="red" title="Could not load audit results">
+          {error ?? 'No audit results available'}
+        </Alert>
+      );
     }
 
     switch (currentSection) {
       case 'overview':
-        return <Overview auditResult={auditResult} />;
+        return <Overview auditResult={auditResult} onSelectCategory={openCategory} />;
       case 'categories':
-        return <Categories auditResult={auditResult} />;
+        return <Categories auditResult={auditResult} initialCategoryId={selectedCategoryId} />;
       case 'action-plan':
         return <ActionPlan auditResult={auditResult} />;
-      case 'recommendations':
-        return <Recommendations auditResult={auditResult} />;
       case 'progress':
-        return <Progress auditResult={auditResult} />;
+        return <Progress auditResult={auditResult} onAuditComplete={handleAuditComplete} />;
       case 'export':
         return <Export auditResult={auditResult} />;
       default:
-        return <Overview auditResult={auditResult} />;
+        return <Overview auditResult={auditResult} onSelectCategory={openCategory} />;
     }
   };
 
   return (
     <AppShell
       navbar={{
-        width: 280,
+        width: 260,
         breakpoint: 'sm',
         collapsed: { mobile: !opened },
       }}
-      padding="md"
+      header={{ height: 48 }}
+      padding="lg"
     >
+      <AppShell.Header>
+        <Group h="100%" px="md" justify="space-between">
+          <Group gap="sm">
+            <Burger opened={opened} onClick={toggle} size="sm" hiddenFrom="sm" />
+            <Text fw={700}>dsaudit</Text>
+          </Group>
+          <Text size="xs" c="dimmed">
+            Design system health report
+          </Text>
+        </Group>
+      </AppShell.Header>
 
       <AppShell.Navbar>
-        <Sidebar 
-          currentSection={currentSection} 
-          onSectionChange={setCurrentSection}
+        <Sidebar
+          currentSection={currentSection}
+          onSectionChange={navigate}
           auditResult={auditResult}
         />
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <div className="main-content">
+        <Stack maw={1100} mx="auto">
           {renderSection()}
-        </div>
+        </Stack>
       </AppShell.Main>
     </AppShell>
   );

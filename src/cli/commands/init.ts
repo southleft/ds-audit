@@ -9,6 +9,7 @@ import { AuditConfig, AuditResult } from '../../types/index.js';
 import { AuditEngine } from '../../core/AuditEngine.js';
 import { ReportGenerator } from '../../core/ReportGenerator.js';
 import { DashboardServer } from '../../dashboard/DashboardServer.js';
+import { createDefaultConfig } from './config.js';
 
 interface EnvConfig {
   apiKey?: string;
@@ -23,7 +24,7 @@ async function loadProjectEnv(projectPath: string): Promise<EnvConfig> {
     const parsed = dotenv.parse(envContent);
     return {
       apiKey: parsed.ANTHROPIC_API_KEY,
-      model: parsed.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514'
+      model: parsed.ANTHROPIC_MODEL
     };
   } catch {
     return {};
@@ -31,12 +32,11 @@ async function loadProjectEnv(projectPath: string): Promise<EnvConfig> {
 }
 
 // Helper to save to .env file in project directory
-async function saveToEnv(projectPath: string, apiKey: string, model: string): Promise<void> {
+async function saveToEnv(projectPath: string, apiKey: string, model?: string): Promise<void> {
   const envPath = path.join(projectPath, '.env');
   const envContent = `# Design System Audit Configuration
 ANTHROPIC_API_KEY=${apiKey}
-ANTHROPIC_MODEL=${model}
-`;
+${model ? `ANTHROPIC_MODEL=${model}\n` : ''}`;
   
   try {
     // Check if .env exists and append if needed
@@ -219,7 +219,19 @@ export async function initCommand(options: any): Promise<void> {
         });
       }
     });
-    
+
+    engine.on('ai:start', () => {
+      logger.updateSpinner('Running AI judge review...');
+    });
+
+    engine.on('ai:category', (categoryId) => {
+      logger.updateSpinner(`AI judge reviewing ${categoryId}...`);
+    });
+
+    engine.on('ai:error', () => {
+      logger.updateSpinner('AI judge review failed — continuing with deterministic scores...');
+    });
+
     const results = await engine.run();
     logger.stopSpinner();
     logger.success('Audit completed!');
@@ -250,37 +262,20 @@ export async function initCommand(options: any): Promise<void> {
 }
 
 async function buildConfiguration(options: any, logger: Logger): Promise<AuditConfig> {
-  const config: AuditConfig = {
-    projectPath: options.path,
-    outputPath: './audit',
-    includePatterns: ['**/*.{js,jsx,ts,tsx,css,scss,json,md}'],
-    excludePatterns: ['**/node_modules/**', '**/dist/**', '**/build/**'],
-    modules: {
-      components: true,
-      tokens: true,
-      documentation: true,  // Includes governance checks
-      tooling: true,
-      performance: true,
-      accessibility: true,
-    },
-    ai: {
-      enabled: true,  // AI is always enabled
-      model: 'claude-sonnet-4-20250514',
-    },
-    dashboard: {
-      enabled: true,
-      port: 4321,
-      autoOpen: true,
-    },
-  };
+  const config = createDefaultConfig(options.path);
 
-  // Load existing .env if available
+  // Look for an existing API key: project .env first, then process env
   const envConfig = await loadProjectEnv(config.projectPath);
-  
-  if (envConfig.apiKey) {
-    logger.info('Using API configuration from .env file');
-    config.ai.apiKey = envConfig.apiKey;
-    config.ai.model = envConfig.model || 'claude-sonnet-4-20250514';
+  const existingApiKey = envConfig.apiKey || process.env.ANTHROPIC_API_KEY;
+
+  if (existingApiKey) {
+    logger.info(envConfig.apiKey
+      ? 'Found Anthropic API key in project .env file'
+      : 'Found ANTHROPIC_API_KEY in environment');
+    config.ai.apiKey = existingApiKey;
+    if (envConfig.model) {
+      config.ai.model = envConfig.model;
+    }
   }
 
   if (options.interactive !== false) {
@@ -298,19 +293,14 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
           { name: 'Accessibility', value: 'accessibility', checked: true },
         ],
       },
+      {
+        type: 'confirm',
+        name: 'aiEnabled',
+        message: 'Enable AI-powered judge review? (requires Anthropic API key)',
+        default: Boolean(existingApiKey),
+      },
     ];
-    
-    // Only prompt for API key if not found in .env
-    if (!config.ai.apiKey) {
-      prompts.push({
-        type: 'password',
-        name: 'apiKey',
-        message: 'Enter your Anthropic API key:',
-        mask: '*',
-        validate: (input: string) => input.length > 0 || 'API key is required',
-      });
-    }
-    
+
     const answers = await inquirer.prompt(prompts);
 
     // Update config based on answers
@@ -318,15 +308,41 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
       config.modules[key as keyof typeof config.modules] = answers.modules.includes(key);
     });
 
-    // Save API key to .env if provided
-    if (answers.apiKey) {
-      config.ai.apiKey = answers.apiKey;
-      await saveToEnv(config.projectPath, answers.apiKey, config.ai.model!);
-      logger.info('API configuration saved to .env file');
+    config.ai.enabled = Boolean(answers.aiEnabled);
+
+    // Only prompt for an API key when AI is enabled and no key was found
+    if (config.ai.enabled && !config.ai.apiKey) {
+      const { apiKey } = await inquirer.prompt([
+        {
+          type: 'password',
+          name: 'apiKey',
+          message: 'Enter your Anthropic API key (leave blank to skip and disable AI):',
+          mask: '*',
+        },
+      ]);
+
+      if (apiKey && apiKey.trim().length > 0) {
+        const trimmedKey: string = apiKey.trim();
+        config.ai.apiKey = trimmedKey;
+        await saveToEnv(config.projectPath, trimmedKey, config.ai.model);
+        logger.info('API configuration saved to .env file');
+      } else {
+        config.ai.enabled = false;
+        logger.info('No API key provided — AI judge review disabled. Scores will be deterministic only.');
+      }
     }
 
     // Dashboard is always enabled
     config.dashboard.enabled = true;
+  } else {
+    // Non-interactive: enable AI only when an API key is available
+    if (existingApiKey) {
+      config.ai.enabled = true;
+      logger.info('AI judge review enabled (API key found in environment)');
+    } else {
+      config.ai.enabled = false;
+      logger.info('AI judge review disabled (no ANTHROPIC_API_KEY found). Scores will be deterministic only.');
+    }
   }
 
   return config;
@@ -334,11 +350,10 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
 
 async function saveConfiguration(config: AuditConfig): Promise<void> {
   const configPath = path.join(config.projectPath, '.dsaudit.json');
-  // Don't save the API key to the JSON config file - it should only be in .env
-  const configToSave = { ...config };
-  if (configToSave.ai) {
-    delete configToSave.ai.apiKey;
-  }
+  // Don't save the API key to the JSON config file - it should only be in .env.
+  // Deep-copy `ai` so deleting the key doesn't mutate the live config used by the engine.
+  const configToSave: AuditConfig = { ...config, ai: { ...config.ai } };
+  delete configToSave.ai.apiKey;
   await fs.writeFile(configPath, JSON.stringify(configToSave, null, 2));
 }
 

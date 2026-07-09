@@ -16,6 +16,9 @@ export interface AuditConfig {
     enabled: boolean;
     apiKey?: string;
     model?: string;
+    /** Weight (0-1) given to the LLM judge score when blending with the
+     * deterministic score for judged categories. Default 0.3. */
+    judgeWeight?: number;
   };
   dashboard: {
     enabled: boolean;
@@ -54,6 +57,9 @@ export interface AuditResult {
   projectPath: string;
   overallScore: number;
   overallGrade: string;
+  /** True when one or more enabled categories failed to run. The overall
+   * score covers only the categories that completed. */
+  partial?: boolean;
   categories: CategoryResult[];
   recommendations: Recommendation[];
   metadata: AuditMetadata;
@@ -62,16 +68,45 @@ export interface AuditResult {
     summary: string;
     strengths: string[];
     improvements: string[];
-    sources?: boolean;
   };
+}
+
+/** Output of the LLM judge for a single category. Only present when AI is
+ * enabled and the category is judgeable. Never fabricated: if the judge call
+ * fails, the field is absent and the deterministic score stands alone. */
+export interface JudgeResult {
+  /** Rubric-based score 0-100 assigned by the model. */
+  score: number;
+  confidence: 'low' | 'medium' | 'high';
+  summary: string;
+  strengths: string[];
+  issues: JudgeIssue[];
+  /** Model ID that produced this judgement, for traceability. */
+  model: string;
+  /** Files/excerpts the judge was shown, so the result is auditable. */
+  evidenceFiles: string[];
+}
+
+export interface JudgeIssue {
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  description: string;
+  file?: string;
+  suggestion?: string;
 }
 
 export interface CategoryResult {
   id: string;
   name: string;
+  /** Final category score. When `judge` is present this is the labeled blend
+   * of `deterministicScore` and `judge.score`; otherwise purely deterministic. */
   score: number;
   grade: string;
+  /** Effective weight used in the overall score. Stamped by the engine from
+   * the single scoring table — auditors do not control this. */
   weight: number;
+  /** The static-analysis score before any judge blending. */
+  deterministicScore?: number;
+  judge?: JudgeResult;
   findings: Finding[];
   metrics: Record<string, unknown>;
   scannedPaths?: string[];
@@ -110,6 +145,9 @@ export interface AuditMetadata {
   toolsDetected: string[];
   frameworksDetected: string[];
   errors: string[];
+  /** Category IDs that were enabled but crashed. Surfaced prominently in
+   * reports; the overall score excludes them and is marked partial. */
+  failedCategories?: { id: string; error: string }[];
   outputPath?: string;
 }
 

@@ -1,274 +1,282 @@
 import React, { useState } from 'react';
-import { Card, Title, Text, Progress as MantineProgress, Group, Badge, Timeline, Loader, Alert, Stack, Code, Button, Divider } from '@mantine/core';
-import { Activity, CheckCircle, XCircle, Clock, Play } from 'lucide-react';
-import { useProgress } from '../hooks/useProgress';
-import './Progress.css';
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Code,
+  Divider,
+  Group,
+  Loader,
+  Progress as MantineProgress,
+  Stack,
+  Text,
+  Timeline,
+  Title,
+} from '@mantine/core';
+import { Activity, CheckCircle, Clock, Play, Sparkles, XCircle } from 'lucide-react';
+import type { AuditResult } from '../types';
+import { useProgress, type CategoryStatus } from '../hooks/useProgress';
+import { startAudit } from '../utils/api';
 
 interface ProgressProps {
-  auditResult?: {
-    timestamp: string;
-    overallScore: number;
-    overallGrade: string;
-  };
+  auditResult: AuditResult | null;
+  /** Called when a live audit completes so the app can reload fresh results. */
+  onAuditComplete: () => void;
 }
 
-const Progress: React.FC<ProgressProps> = ({ auditResult }) => {
-  const { isConnected, progress, currentCategory, message, categoryResults, isComplete, lastAuditTime, isAuditActive } = useProgress();
-  const [isStartingAudit, setIsStartingAudit] = useState(false);
-  
-  // Debug logging
-  React.useEffect(() => {
-    console.log('[Progress Component] State:', {
-      isAuditActive,
-      progress,
-      currentCategory,
-      categoryResultsCount: Object.keys(categoryResults).length,
-      isComplete
-    });
-  }, [isAuditActive, progress, currentCategory, categoryResults, isComplete]);
+function statusIcon(status: CategoryStatus | undefined, isCurrent: boolean) {
+  if (isCurrent || status?.state === 'running') return <Loader size={18} />;
+  if (status?.state === 'complete')
+    return <CheckCircle size={18} color="var(--mantine-color-green-6)" />;
+  if (status?.state === 'error') return <XCircle size={18} color="var(--mantine-color-red-6)" />;
+  return <Clock size={18} color="var(--mantine-color-gray-6)" />;
+}
 
-  const getCategoryIcon = (status?: 'complete' | 'error' | 'in-progress') => {
-    switch (status) {
-      case 'complete':
-        return <CheckCircle size={20} color="var(--mantine-color-green-6)" />;
-      case 'error':
-        return <XCircle size={20} color="var(--mantine-color-red-6)" />;
-      case 'in-progress':
-        return <Loader size={20} />;
-      default:
-        return <Clock size={20} color="var(--mantine-color-gray-6)" />;
-    }
-  };
+const Progress: React.FC<ProgressProps> = ({ auditResult, onAuditComplete }) => {
+  const state = useProgress(onAuditComplete);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
-  const categories = [
-    'components',
-    'tokens',
-    'documentation',
-    'tooling',
-    'performance',
-    'accessibility'
-  ];
+  const hasActivity =
+    state.isAuditActive || state.isComplete || state.auditError !== null ||
+    state.categoryOrder.length > 0;
 
-  // Check URL hash to see if we just started an audit
-  const isAuditStarting = window.location.hash === '#progress' && 
-    (!auditResult || new Date().getTime() - new Date(auditResult.timestamp).getTime() > 60000);
-  
-  // Use the explicit audit active state from SSE events or if we're just starting
-  const hasActiveAudit = isAuditActive || isAuditStarting || progress > 0 || currentCategory || Object.keys(categoryResults).length > 0;
-
-  const startNewAudit = async () => {
-    setIsStartingAudit(true);
+  const handleStart = async () => {
+    setIsStarting(true);
+    setStartError(null);
     try {
-      const response = await fetch('/api/start-audit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start audit');
-      }
-      
-      const result = await response.json();
-      console.log('Audit started:', result.message);
+      await startAudit();
     } catch (error) {
-      console.error('Failed to start audit:', error);
-      alert('Failed to start audit. Please try again or use the CLI.');
+      setStartError(error instanceof Error ? error.message : 'Failed to start audit');
     } finally {
-      setIsStartingAudit(false);
+      setIsStarting(false);
     }
   };
 
-  const formatDate = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString();
-  };
+  const aiActive = state.aiPhase === 'running';
 
   return (
-    <div style={{ padding: '1rem', maxWidth: '800px', margin: '0 auto' }}>
-      <Stack gap="xl">
-        {/* Page Header */}
-        <div>
-          <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Tools</Text>
-          <Title order={1} size="h2">Live Progress</Title>
-          <Text c="dimmed" size="sm">
-            Monitor real-time audit progress when running from the CLI
-          </Text>
-        </div>
+    <Stack gap="md" maw={860}>
+      <div>
+        <Title order={2}>Live Progress</Title>
+        <Text c="dimmed" size="sm">
+          Real-time audit progress, streamed over server-sent events
+        </Text>
+      </div>
 
-        {/* Connection Status */}
-        <Card withBorder style={{ backgroundColor: 'var(--bg-secondary)' }}>
-          <Group justify="space-between" align="center">
-            <Group gap="md">
-              <Activity size={20} />
-              <div>
-                <Text fw={600}>Connection Status</Text>
-                <Text size="sm" c="dimmed">
-                  {isConnected ? 'Connected to audit server' : 'Waiting for connection...'}
-                </Text>
-              </div>
-            </Group>
-            <Badge color={isConnected ? 'green' : 'gray'} variant="dot">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </Badge>
+      {/* Connection status */}
+      <Card withBorder radius="md" padding="md">
+        <Group justify="space-between">
+          <Group gap="sm">
+            <Activity size={18} />
+            <Text size="sm" fw={500}>
+              {state.isConnected ? 'Connected to audit server' : 'Waiting for connection...'}
+            </Text>
           </Group>
-        </Card>
+          <Badge color={state.isConnected ? 'green' : 'gray'} variant="dot">
+            {state.isConnected ? 'Connected' : 'Disconnected'}
+          </Badge>
+        </Group>
+      </Card>
 
-        {/* Progress Section */}
-        {!isConnected ? (
-          <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
-            <Stack gap="md" align="center">
-              <Loader size="lg" />
-              <Text>Connecting to audit server...</Text>
-            </Stack>
-          </Card>
-        ) : hasActiveAudit ? (
-          <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
-            <Stack gap="lg">
-              <div>
-                <Group justify="space-between" align="center" mb="md">
-                  <Title order={3}>Current Audit</Title>
-                  <Text size="lg" fw={600} c={isComplete ? 'green' : 'blue'}>
-                    {progress}% Complete
-                  </Text>
-                </Group>
-                
-                <Text size="sm" c="dimmed" mb="md">{message}</Text>
-                
-                <MantineProgress
-                  value={progress}
-                  size="lg"
-                  radius="sm"
-                  color={isComplete ? 'green' : 'blue'}
-                  striped={!isComplete}
-                  animated={!isComplete}
-                />
-              </div>
+      {state.auditError && (
+        <Alert color="red" title="Audit failed" icon={<XCircle size={16} />}>
+          <Text size="sm">{state.auditError}</Text>
+          <Text size="sm" c="dimmed" mt={4}>
+            Fix the underlying problem and start a new audit.
+          </Text>
+        </Alert>
+      )}
 
-              <Timeline active={-1} bulletSize={32} lineWidth={2}>
-                {categories.map((category) => {
-                  const result = categoryResults[category];
-                  const isCurrent = currentCategory === category;
-                  const status = result ? (result.error ? 'error' : 'complete') : 
-                                (isCurrent ? 'in-progress' : undefined);
-
-                  return (
-                    <Timeline.Item
-                      key={category}
-                      bullet={getCategoryIcon(status)}
-                      title={
-                        <Group justify="space-between" align="center">
-                          <Text fw={isCurrent ? 600 : 400} size="sm">
-                            {category.charAt(0).toUpperCase() + category.slice(1)}
-                          </Text>
-                          {result && !result.error && (
-                            <Badge color="green" size="sm">
-                              Score: {result.score}
-                            </Badge>
-                          )}
-                          {result?.error && (
-                            <Badge color="red" size="sm">
-                              Error
-                            </Badge>
-                          )}
-                        </Group>
-                      }
-                    >
-                      {isCurrent && (
-                        <Text size="xs" c="dimmed">Analyzing...</Text>
-                      )}
-                      {result && !result.error && (
-                        <Text size="xs" c="dimmed">
-                          Grade {result.grade} • {result.findings?.length || 0} findings
-                        </Text>
-                      )}
-                      {result?.error && (
-                        <Text size="xs" c="red">
-                          {result.error}
-                        </Text>
-                      )}
-                    </Timeline.Item>
-                  );
-                })}
-              </Timeline>
-
-              {isComplete && (
-                <Alert color="green" title="Audit Complete!" icon={<CheckCircle size={16} />}>
-                  <Text size="sm">
-                    Audit completed successfully! Dashboard will refresh with new results shortly.
-                  </Text>
-                </Alert>
-              )}
-            </Stack>
-          </Card>
-        ) : (
+      {hasActivity ? (
+        <Card withBorder radius="md" padding="lg">
           <Stack gap="lg">
-            {/* Last Audit Info */}
-            {auditResult && (
-              <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
-                <Stack gap="md">
-                  <Group justify="space-between" align="center">
-                    <Title order={4}>Last Audit</Title>
-                    <Badge color="green" variant="light">
-                      Score: {auditResult.overallScore} (Grade {auditResult.overallGrade})
-                    </Badge>
-                  </Group>
-                  <Group gap="md">
-                    <Clock size={16} color="var(--mantine-color-gray-6)" />
+            <div>
+              <Group justify="space-between" mb="xs">
+                <Title order={4}>Current audit</Title>
+                <Group gap="xs">
+                  {state.totalCategories !== null && (
                     <Text size="sm" c="dimmed">
-                      Completed on {formatDate(auditResult.timestamp)}
+                      {state.categoryOrder.filter(id => {
+                        const s = state.categoryStatus[id];
+                        return s && s.state !== 'running';
+                      }).length}
+                      /{state.totalCategories} categories
                     </Text>
-                  </Group>
-                  <Text size="sm">
-                    Would you like to perform another audit?
+                  )}
+                  <Text size="lg" fw={700} c={state.isComplete ? 'green' : 'blue'}>
+                    {state.progress}%
                   </Text>
-                </Stack>
-              </Card>
-            )}
-            
-            {/* Start New Audit */}
-            <Card withBorder style={{ backgroundColor: 'var(--bg-surface)' }}>
-              <Stack gap="md">
-                <Group justify="space-between" align="center">
-                  <Title order={4}>Start New Audit</Title>
-                  <Button
-                    leftSection={<Play size={16} />}
-                    onClick={startNewAudit}
-                    loading={isStartingAudit}
-                    disabled={!isConnected}
-                  >
-                    {isStartingAudit ? 'Starting...' : 'Start Audit'}
-                  </Button>
                 </Group>
-                <Text size="sm" c="dimmed">
-                  {isConnected 
-                    ? 'Click the button above to start a new audit. Progress will be shown in real-time on this page.'
-                    : 'Dashboard server must be connected to start an audit.'}
+              </Group>
+              {state.message && (
+                <Text size="sm" c="dimmed" mb="xs">
+                  {state.message}
                 </Text>
-              </Stack>
-            </Card>
-            
-            <Divider label="Or use CLI" labelPosition="center" />
-            
-            {/* CLI Instructions */}
-            <Alert color="blue" title="Alternative: CLI Command" icon={<Activity size={16} />}>
-              <Stack gap="md">
-                <Text size="sm">
-                  You can also start an audit from your terminal:
-                </Text>
-                <Code block style={{ fontSize: '12px', backgroundColor: 'var(--bg-tertiary)' }}>
-                  npm run build{'\n'}
-                  node dist/cli.js init --path /path/to/your-design-system
-                </Code>
-                <Text size="xs" c="dimmed">
-                  The progress will appear here automatically when an audit starts. Keep this page open to monitor real-time updates.
-                </Text>
-              </Stack>
-            </Alert>
+              )}
+              <MantineProgress
+                value={state.progress}
+                size="lg"
+                radius="sm"
+                color={state.auditError ? 'red' : state.isComplete ? 'green' : 'blue'}
+                striped={state.isAuditActive}
+                animated={state.isAuditActive}
+              />
+            </div>
+
+            <Timeline active={-1} bulletSize={30} lineWidth={2}>
+              {state.categoryOrder.map(categoryId => {
+                const status = state.categoryStatus[categoryId];
+                const isCurrent = state.currentCategory === categoryId;
+                return (
+                  <Timeline.Item
+                    key={categoryId}
+                    bullet={statusIcon(status, isCurrent)}
+                    title={
+                      <Group justify="space-between">
+                        <Text size="sm" fw={isCurrent ? 600 : 400} tt="capitalize">
+                          {categoryId}
+                        </Text>
+                        {status?.state === 'complete' && status.score !== undefined && (
+                          <Badge color="green" size="sm" variant="light">
+                            Score: {status.score}
+                          </Badge>
+                        )}
+                        {status?.state === 'error' && (
+                          <Badge color="red" size="sm" variant="light">
+                            Failed
+                          </Badge>
+                        )}
+                      </Group>
+                    }
+                  >
+                    {isCurrent && (
+                      <Text size="xs" c="dimmed">
+                        Analyzing...
+                      </Text>
+                    )}
+                    {status?.state === 'complete' && (
+                      <Text size="xs" c="dimmed">
+                        {status.grade !== undefined ? `Grade ${status.grade}` : ''}
+                        {status.findingsCount !== undefined
+                          ? `${status.grade !== undefined ? ' • ' : ''}${status.findingsCount} findings`
+                          : ''}
+                      </Text>
+                    )}
+                    {status?.state === 'error' && (
+                      <Text size="xs" c="red">
+                        {status.error ?? 'Category failed — excluded from the overall score'}
+                      </Text>
+                    )}
+                  </Timeline.Item>
+                );
+              })}
+
+              {/* AI judge phase — shown once ai:* events arrive */}
+              {state.aiPhase !== 'idle' && (
+                <Timeline.Item
+                  bullet={
+                    aiActive ? (
+                      <Loader size={18} />
+                    ) : state.aiPhase === 'complete' ? (
+                      <CheckCircle size={18} color="var(--mantine-color-green-6)" />
+                    ) : (
+                      <XCircle size={18} color="var(--mantine-color-red-6)" />
+                    )
+                  }
+                  title={
+                    <Group gap="xs">
+                      <Sparkles size={14} />
+                      <Text size="sm" fw={aiActive ? 600 : 400}>
+                        AI judge review
+                      </Text>
+                      {state.aiPhase === 'error' && (
+                        <Badge color="red" size="sm" variant="light">
+                          Failed
+                        </Badge>
+                      )}
+                    </Group>
+                  }
+                >
+                  {aiActive && (
+                    <Text size="xs" c="dimmed">
+                      {state.aiCurrentCategory
+                        ? `Reviewing ${state.aiCurrentCategory}...`
+                        : 'AI judge reviewing...'}
+                    </Text>
+                  )}
+                  {state.aiPhase === 'error' && (
+                    <Text size="xs" c="red">
+                      {state.aiError ?? 'AI judge failed'} — scores are deterministic only
+                    </Text>
+                  )}
+                </Timeline.Item>
+              )}
+            </Timeline>
+
+            {state.isComplete && (
+              <Alert color="green" title="Audit complete" icon={<CheckCircle size={16} />}>
+                <Text size="sm">Loading fresh results...</Text>
+              </Alert>
+            )}
           </Stack>
-        )}
-      </Stack>
-    </div>
+        </Card>
+      ) : (
+        <Stack gap="md">
+          {auditResult && auditResult.categories?.length > 0 && (
+            <Card withBorder radius="md" padding="lg">
+              <Group justify="space-between" mb="xs">
+                <Title order={4}>Last audit</Title>
+                <Badge color="green" variant="light">
+                  Score: {auditResult.overallScore} (Grade {auditResult.overallGrade})
+                </Badge>
+              </Group>
+              <Group gap="xs">
+                <Clock size={14} color="var(--mantine-color-gray-6)" />
+                <Text size="sm" c="dimmed">
+                  Completed {new Date(auditResult.timestamp).toLocaleString()}
+                </Text>
+              </Group>
+            </Card>
+          )}
+
+          <Card withBorder radius="md" padding="lg">
+            <Group justify="space-between" mb="xs">
+              <Title order={4}>Start new audit</Title>
+              <Button
+                leftSection={<Play size={16} />}
+                onClick={handleStart}
+                loading={isStarting}
+                disabled={!state.isConnected}
+              >
+                Start audit
+              </Button>
+            </Group>
+            <Text size="sm" c="dimmed">
+              {state.isConnected
+                ? 'Runs the audit with the current configuration. Progress appears here in real time.'
+                : 'The dashboard server must be connected to start an audit.'}
+            </Text>
+            {startError && (
+              <Alert color="red" mt="sm">
+                {startError}
+              </Alert>
+            )}
+          </Card>
+
+          <Divider label="Or use the CLI" labelPosition="center" />
+
+          <Alert color="blue" title="Run from the terminal" icon={<Activity size={16} />}>
+            <Code block>dsaudit run --dashboard</Code>
+            <Text size="xs" c="dimmed" mt="xs">
+              Progress appears here automatically when an audit starts. Keep this page open to
+              monitor updates.
+            </Text>
+          </Alert>
+        </Stack>
+      )}
+    </Stack>
   );
 };
 

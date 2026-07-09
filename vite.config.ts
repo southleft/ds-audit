@@ -6,8 +6,10 @@ export default defineConfig({
   plugins: [react()],
   root: path.resolve(__dirname, 'src/dashboard'),
   build: {
-    outDir: path.resolve(__dirname, 'dist/dashboard'),
-    emptyOutDir: false,
+    // The React bundle gets its own subdirectory so emptyOutDir never deletes
+    // tsc output (dist/dashboard/DashboardServer.js lives one level up).
+    outDir: path.resolve(__dirname, 'dist/dashboard/app'),
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'src/dashboard/index.html')

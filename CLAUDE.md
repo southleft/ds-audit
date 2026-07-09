@@ -1,49 +1,60 @@
 # Claude Code Context for dsaudit
 
 ## Project Overview
-This is a CLI-based design system auditing tool ("Chrome Lighthouse for design systems") that evaluates the health, structure, and completeness of code-based design systems.
+CLI-based design system auditing tool ("Chrome Lighthouse for design systems") that evaluates the health, structure, and completeness of code-based design systems.
 
 ## Key Commands
-- `npm run build` - Build the TypeScript project
+- `npm run build` - Build the TypeScript project and dashboard
 - `npm run dev` - Run in development mode
 - `npm run lint` - Run ESLint
 - `npm run typecheck` - Check TypeScript types
 - `npm test` - Run tests
 
 ## CLI Commands
-- `dsaudit init --path <project>` - Interactive audit with prompts
-- `dsaudit run` - Non-interactive audit using `.dsaudit.json` config
+- `dsaudit init` - Interactive audit: prompts for modules and AI judge opt-in, writes `.dsaudit.json`, runs the audit
+  - `--path <dir>` - Project directory (default: cwd)
+  - `--no-interactive` - Use defaults; AI enabled only if ANTHROPIC_API_KEY is present
+- `dsaudit run` - Non-interactive audit using `.dsaudit.json`
   - `--config <path>` - Custom config file path
   - `--output <dir>` - Output directory for reports
-  - `--format <formats>` - Output formats: json,md,html
+  - `--format <formats>` - Report formats: json,md (no html — the dashboard is the HTML experience)
   - `--dashboard` - Start dashboard after audit
   - `--quiet` - Minimal output for CI/CD
+- `dsaudit config --show` - Pretty-print `.dsaudit.json` from cwd
+- `dsaudit config --reset` - Write the default configuration
 
 ## Architecture
-- **CLI Layer** (`src/cli/`) - Command handling (init, run commands)
-- **Core Layer** (`src/core/`) - Audit engine, scoring, AI integration
-- **Modules Layer** (`src/modules/`) - Individual auditors for each category
-- **Dashboard Layer** (`src/dashboard/`) - React 19 + Mantine UI visualization
+Deterministic auditors + optional LLM judge (`src/core/LLMJudge.ts`); single scoring table in `src/core/ScoringService.ts` (`CATEGORY_WEIGHTS`).
+
+- **CLI Layer** (`src/cli/`) - Commands: init, run, config. Shared config defaults exported from `src/cli/commands/config.ts` (`createDefaultConfig`)
+- **Core Layer** (`src/core/`) - `AuditEngine` orchestrates deterministic auditors; the optional LLM judge performs rubric-based review of judged categories (documentation, components, tokens), blended at a bounded weight (`ai.judgeWeight`, default 0.3 — deterministic score always dominates)
+- **Modules Layer** (`src/modules/`) - Individual deterministic auditors per category
+- **Dashboard Layer** (`src/dashboard/`) - React 19 + Mantine UI served by Express with SSE live progress
 - **Utils Layer** (`src/utils/`) - Shared utilities
 
-## Dashboard Views (6 focused views)
-1. **Overview** - Score summary and category breakdown
-2. **Categories** - Detailed per-category analysis with real data
-3. **Action Plan** - Prioritized improvement tasks
-4. **Recommendations** - AI-powered suggestions
-5. **Live Progress** - Real-time audit progress via SSE
-6. **Export** - Download reports in various formats
+## Audit Categories (weights in CATEGORY_WEIGHTS)
+1. **Components** (25%)
+2. **Tokens** (20%)
+3. **Documentation** (20%) - includes governance checks
+4. **Accessibility** (13%)
+5. **Tooling** (12%)
+6. **Performance** (10%)
 
-## Audit Categories
-1. **Components** (25%) - Component structure, tests, accessibility
-2. **Tokens** (20%) - Design token architecture and usage
-3. **Documentation** (20%) - Docs, governance guidelines, versioning
-4. **Tooling** (12%) - Build tools, linting, testing, CI/CD
-5. **Performance** (10%) - Bundle size, build performance
-6. **Accessibility** (13%) - ARIA compliance, keyboard support
+Grade bands: A >= 90, B >= 80, C >= 70, D >= 60, F below.
+
+## AI Judge Notes
+- Optional; requires ANTHROPIC_API_KEY (project `.env` or environment). The API key is never written to `.dsaudit.json`
+- The engine instantiates the judge from `config.ai`; the CLI only supplies config
+- No hardcoded model strings in the CLI — `LLMJudge` owns the default model; `ai.model` overrides it
+- Judge output is absent on failure (never fabricated); scores are deterministic-only when AI is off
+- Engine events: audit:start, category:start/complete/error, ai:start, ai:category, ai:complete, ai:error, audit:complete
+- `AuditResult` may be `partial` with `metadata.failedCategories`; judged categories carry `deterministicScore` and `judge`
+
+## Reports
+- `ReportGenerator.generate(results, formats)` — formats is an array of 'json' | 'md'
+- No HTML report format — use the dashboard for the interactive view
 
 ## Testing the Tool
-To test on a project:
 ```bash
 npm run build
 node dist/cli.js init --path /path/to/design-system
@@ -54,26 +65,10 @@ Or with existing config:
 node dist/cli.js run --dashboard
 ```
 
-## Key Features
-- Comprehensive multi-category analysis
-- AI-powered insights (optional with Claude API)
-- Interactive React dashboard with Mantine UI
-- Detailed Markdown and JSON reports
-- Real-time progress tracking via Server-Sent Events
-- Actionable recommendations with priority/effort ratings
-- Token coverage analysis with spatial indexing
-
 ## Development Notes
-- Uses TypeScript with strict mode
+- TypeScript strict mode; ESM (`"type": "module"`)
+- Node >= 18
 - Express server for dashboard with SSE support
 - Event-driven architecture for progress tracking
 - Modular auditor system for extensibility
-- React 19 + Mantine v7 for dashboard UI
-- Vite for dashboard bundling
-
-## Recent Cleanup (Dec 2024)
-- Removed legacy HTML dashboard files (4,754 lines)
-- Removed unused dependencies (@tabler/icons-react, lighthouse, axe-core)
-- Removed mock data generation - all displayed data is now real
-- Consolidated dashboard from 9 views to 6 focused views
-- Implemented full `run` command for non-interactive usage
+- Vite builds the dashboard to `dist/dashboard` (`emptyOutDir` scoped to that folder only)

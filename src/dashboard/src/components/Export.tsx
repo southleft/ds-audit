@@ -1,260 +1,210 @@
-import React, { useState } from 'react';
-import { Card, Title, Text, Button, Group, Select, Checkbox, Stack, Divider, Badge } from '@mantine/core';
-import { FileText, FileBarChart, Link, BarChart3 } from 'lucide-react';
-import { AuditResult } from '@types';
-import { exportData, ExportFormat } from '../utils/dataExport';
-import { exportToPDF, ExportOptions } from '../utils/pdfExport';
-import './Export.css';
+import React, { useEffect, useState } from 'react';
+import {
+  Badge,
+  Button,
+  Card,
+  Group,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
+import { Copy, Download, ExternalLink, FileText } from 'lucide-react';
+import type { AuditResult } from '../types';
+import { exportData, type ExportFormat } from '../utils/dataExport';
 
 interface ExportProps {
   auditResult: AuditResult;
 }
 
-const Export: React.FC<ExportProps> = ({ auditResult }) => {
-  const [dataFormat, setDataFormat] = useState<ExportFormat>('json');
-  const [pdfSections, setPdfSections] = useState({
-    overview: true,
-    categories: true,
-    recommendations: true
-  });
-  const [includeCharts, setIncludeCharts] = useState(true);
-  const [isExporting, setIsExporting] = useState(false);
+const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string; description: string }> = [
+  { value: 'json', label: 'JSON', description: 'Complete audit data, exactly as produced by the engine' },
+  { value: 'csv', label: 'CSV', description: 'Category scores in spreadsheet format' },
+  { value: 'markdown', label: 'Markdown', description: 'Formatted report with findings and recommendations' },
+];
 
-  const handleDataExport = () => {
-    exportData(auditResult, dataFormat);
-  };
+/** Availability-checked link to a server-generated audit file. */
+function QuickLink({ label, path }: { label: string; path: string }) {
+  const [available, setAvailable] = useState<boolean | null>(null);
 
-  const handlePDFExport = async () => {
-    setIsExporting(true);
-    try {
-      const sections = Object.entries(pdfSections)
-        .filter(([_, enabled]) => enabled)
-        .map(([section]) => section);
-      
-      await exportToPDF(auditResult, {
-        sections,
-        includeCharts
+  useEffect(() => {
+    let cancelled = false;
+    fetch(path, { method: 'HEAD' })
+      .then(res => {
+        if (!cancelled) setAvailable(res.ok);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailable(false);
       });
-    } catch (error) {
-      console.error('PDF export failed:', error);
-      alert('Failed to export PDF. Please try again.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const exportFormats = [
-    { value: 'json', label: 'JSON', description: 'Complete audit data in JSON format' },
-    { value: 'csv', label: 'CSV', description: 'Category scores and metrics in spreadsheet format' },
-    { value: 'markdown', label: 'Markdown', description: 'Formatted report for documentation' }
-  ];
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
 
   return (
-    <div className="export-container">
-      {/* Page Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Text size="xs" c="dimmed" fw={500} tt="uppercase" mb={4}>Tools</Text>
-        <Title order={1} size="h2">Export</Title>
+    <div>
+      <Group justify="space-between" mb={2}>
+        <Text size="sm" fw={500}>
+          {label}
+        </Text>
+        {available === null ? (
+          <Badge size="sm" color="gray" variant="light">
+            checking…
+          </Badge>
+        ) : (
+          <Badge size="sm" color={available ? 'green' : 'red'} variant="light">
+            {available ? 'Available' : 'Not found'}
+          </Badge>
+        )}
+      </Group>
+      <Text size="xs" c="dimmed" mb={6}>
+        {path}
+      </Text>
+      <Button
+        size="xs"
+        variant="light"
+        fullWidth
+        leftSection={<ExternalLink size={13} />}
+        disabled={available === false}
+        onClick={() => window.open(path, '_blank')}
+      >
+        Open
+      </Button>
+    </div>
+  );
+}
+
+const Export: React.FC<ExportProps> = ({ auditResult }) => {
+  const [format, setFormat] = useState<ExportFormat>('json');
+  const [copied, setCopied] = useState(false);
+
+  const copySummary = async () => {
+    const summary =
+      `Design System Audit Summary\n` +
+      `Date: ${new Date(auditResult.timestamp).toLocaleDateString()}\n` +
+      `Project: ${auditResult.projectPath}\n` +
+      `Score: ${auditResult.overallScore}/100 (Grade ${auditResult.overallGrade})` +
+      (auditResult.partial ? ' — PARTIAL RESULT' : '') +
+      `\n` +
+      auditResult.categories
+        .map(c => `  ${c.name}: ${c.score}/100 (${c.grade})`)
+        .join('\n');
+    await navigator.clipboard.writeText(summary);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Stack gap="md" maw={960}>
+      <div>
+        <Title order={2}>Export</Title>
+        <Text c="dimmed" size="sm">
+          Download the audit data or open the server-generated reports
+        </Text>
       </div>
 
-      <div className="export-grid">
-        <Card className="export-card">
-          <Group gap="xs" mb="md">
-            <FileText size={20} color="var(--mantine-color-blue-6)" />
-            <Title order={4}>Data Export</Title>
+      <SimpleGrid cols={{ base: 1, md: 2 }}>
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="xs" mb="sm">
+            <FileText size={18} />
+            <Title order={4}>Data export</Title>
           </Group>
-          <Text size="sm" c="dimmed" mb="lg">
-            Export audit data in various formats for further analysis or sharing.
+          <Text size="sm" c="dimmed" mb="md">
+            Export the current results for further analysis or sharing.
           </Text>
 
           <Select
-            label="Export Format"
-            value={dataFormat}
-            onChange={(value) => setDataFormat(value as ExportFormat)}
-            data={exportFormats.map(f => ({
-              value: f.value,
-              label: f.label
-            }))}
-            mb="md"
+            label="Format"
+            value={format}
+            onChange={value => setFormat((value as ExportFormat) ?? 'json')}
+            data={EXPORT_FORMATS.map(f => ({ value: f.value, label: f.label }))}
+            allowDeselect={false}
+            mb="xs"
           />
+          <Text size="xs" c="dimmed" mb="md">
+            {EXPORT_FORMATS.find(f => f.value === format)?.description}
+          </Text>
 
-          <div className="format-description">
-            {exportFormats.find(f => f.value === dataFormat)?.description}
-          </div>
-
-          <Button 
-            fullWidth 
-            onClick={handleDataExport}
-            variant="filled"
-            mt="xl"
+          <Button
+            fullWidth
+            leftSection={<Download size={15} />}
+            onClick={() => exportData(auditResult, format)}
           >
-            Download {dataFormat.toUpperCase()}
+            Download {format.toUpperCase()}
           </Button>
         </Card>
 
-        <Card className="export-card">
-          <Group gap="xs" mb="md">
-            <FileBarChart size={20} color="var(--mantine-color-blue-6)" />
-            <Title order={4}>PDF Report</Title>
+        <Card withBorder radius="md" padding="lg">
+          <Group gap="xs" mb="sm">
+            <ExternalLink size={18} />
+            <Title order={4}>Generated reports</Title>
           </Group>
-          <Text size="sm" c="dimmed" mb="lg">
-            Generate a comprehensive PDF report with customizable sections.
+          <Text size="sm" c="dimmed" mb="md">
+            Files written by the audit into the configured output directory.
           </Text>
-
-          <Text size="sm" fw={600} mb="sm">Include Sections:</Text>
-          <Stack gap="sm" mb="md">
-            <Checkbox
-              label="Executive Overview"
-              checked={pdfSections.overview}
-              onChange={(e) => setPdfSections(prev => ({
-                ...prev,
-                overview: e.currentTarget.checked
-              }))}
-            />
-            <Checkbox
-              label="Category Analysis"
-              checked={pdfSections.categories}
-              onChange={(e) => setPdfSections(prev => ({
-                ...prev,
-                categories: e.currentTarget.checked
-              }))}
-            />
-            <Checkbox
-              label="Recommendations"
-              checked={pdfSections.recommendations}
-              onChange={(e) => setPdfSections(prev => ({
-                ...prev,
-                recommendations: e.currentTarget.checked
-              }))}
-            />
-          </Stack>
-
-          <Divider my="md" />
-
-          <Checkbox
-            label="Include charts and visualizations"
-            checked={includeCharts}
-            onChange={(e) => setIncludeCharts(e.currentTarget.checked)}
-            mb="xl"
-          />
-
-          <Button 
-            fullWidth 
-            onClick={handlePDFExport}
-            loading={isExporting}
-            variant="filled"
-            color="blue"
-          >
-            Generate PDF Report
-          </Button>
-        </Card>
-
-        <Card className="export-card">
-          <Group gap="xs" mb="md">
-            <Link size={20} color="var(--mantine-color-blue-6)" />
-            <Title order={4}>Quick Links</Title>
-          </Group>
-          <Text size="sm" c="dimmed" mb="lg">
-            Direct access to generated audit files.
-          </Text>
-
           <Stack gap="md">
-            <div className="quick-link">
-              <Group justify="space-between">
-                <Text size="sm">Markdown Report</Text>
-                <Badge size="sm" color="green">Available</Badge>
-              </Group>
-              <Text size="xs" c="dimmed">audit/report.md</Text>
-              <Button 
-                size="xs" 
-                variant="light" 
-                fullWidth
-                mt="xs"
-                onClick={() => window.open('/audit/report.md', '_blank')}
-              >
-                Open
-              </Button>
-            </div>
-
-            <div className="quick-link">
-              <Group justify="space-between">
-                <Text size="sm">JSON Results</Text>
-                <Badge size="sm" color="green">Available</Badge>
-              </Group>
-              <Text size="xs" c="dimmed">audit/results.json</Text>
-              <Button 
-                size="xs" 
-                variant="light" 
-                fullWidth
-                mt="xs"
-                onClick={() => window.open('/audit/results.json', '_blank')}
-              >
-                Open
-              </Button>
-            </div>
+            <QuickLink label="Markdown report" path="/audit/report.md" />
+            <QuickLink label="JSON results" path="/audit/results.json" />
           </Stack>
         </Card>
+      </SimpleGrid>
 
-        <Card className="export-card">
-          <Group gap="xs" mb="md">
-            <BarChart3 size={20} color="var(--mantine-color-blue-6)" />
-            <Title order={4}>Export Summary</Title>
-          </Group>
-          <Text size="sm" c="dimmed" mb="lg">
-            Current audit snapshot for quick reference.
-          </Text>
-
-          <Stack gap="xs">
-            <Group justify="space-between">
-              <Text size="sm">Audit Date</Text>
-              <Text size="sm" fw={600}>
-                {new Date(auditResult.timestamp).toLocaleDateString()}
-              </Text>
-            </Group>
-            <Group justify="space-between">
-              <Text size="sm">Overall Score</Text>
-              <Text size="sm" fw={600}>
-                {auditResult.overallScore} / 100
-              </Text>
-            </Group>
-            <Group justify="space-between">
-              <Text size="sm">Categories</Text>
-              <Text size="sm" fw={600}>
-                {auditResult.categories.length}
-              </Text>
-            </Group>
-            <Group justify="space-between">
-              <Text size="sm">Files Scanned</Text>
-              <Text size="sm" fw={600}>
-                {auditResult.metadata.filesScanned}
-              </Text>
-            </Group>
-            <Group justify="space-between">
-              <Text size="sm">Recommendations</Text>
-              <Text size="sm" fw={600}>
-                {auditResult.recommendations.length}
-              </Text>
-            </Group>
-          </Stack>
-
-          <Button 
-            fullWidth 
-            variant="light"
-            mt="xl"
-            onClick={() => {
-              const summary = `Design System Audit Summary\n` +
-                `Date: ${new Date(auditResult.timestamp).toLocaleDateString()}\n` +
-                `Score: ${auditResult.overallScore}/100 (Grade ${auditResult.overallGrade})\n` +
-                `View full report: ${window.location.origin}`;
-              navigator.clipboard.writeText(summary);
-              alert('Summary copied to clipboard!');
-            }}
-          >
-            Copy Summary
-          </Button>
-        </Card>
-      </div>
-    </div>
+      <Card withBorder radius="md" padding="lg">
+        <Title order={4} mb="sm">
+          Snapshot
+        </Title>
+        <SimpleGrid cols={{ base: 2, sm: 5 }} mb="md">
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase">
+              Audit date
+            </Text>
+            <Text size="sm" fw={600}>
+              {new Date(auditResult.timestamp).toLocaleDateString()}
+            </Text>
+          </div>
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase">
+              Score
+            </Text>
+            <Text size="sm" fw={600}>
+              {auditResult.overallScore}/100{auditResult.partial ? ' (partial)' : ''}
+            </Text>
+          </div>
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase">
+              Categories
+            </Text>
+            <Text size="sm" fw={600}>
+              {auditResult.categories.length}
+            </Text>
+          </div>
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase">
+              Files scanned
+            </Text>
+            <Text size="sm" fw={600}>
+              {auditResult.metadata.filesScanned}
+            </Text>
+          </div>
+          <div>
+            <Text size="xs" c="dimmed" tt="uppercase">
+              Recommendations
+            </Text>
+            <Text size="sm" fw={600}>
+              {auditResult.recommendations.length}
+            </Text>
+          </div>
+        </SimpleGrid>
+        <Button
+          variant="light"
+          leftSection={<Copy size={15} />}
+          onClick={copySummary}
+        >
+          {copied ? 'Copied!' : 'Copy summary to clipboard'}
+        </Button>
+      </Card>
+    </Stack>
   );
 };
 

@@ -18,9 +18,7 @@
     "accessibility": true
   },
   "ai": {
-    "enabled": false,
-    "apiKey": "your-claude-api-key-here",
-    "model": "claude-sonnet-4-20250514"
+    "enabled": false
   },
   "dashboard": {
     "enabled": true,

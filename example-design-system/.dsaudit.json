@@ -1,5 +1,5 @@
 {
-  "projectPath": "example-design-system",
+  "projectPath": "./",
   "outputPath": "./audit",
   "includePatterns": [
     "**/*.{js,jsx,ts,tsx,css,scss,json,md}"
@@ -13,15 +13,12 @@
     "components": true,
     "tokens": true,
     "documentation": true,
-    "governance": true,
     "tooling": true,
     "performance": true,
     "accessibility": true
   },
   "ai": {
-    "enabled": true,
-    "model": "claude-sonnet-4-20250514",
-    "apiKey": "sk-test-dummy-key-for-testing"
+    "enabled": false
   },
   "dashboard": {
     "enabled": true,

@@ -1,167 +1,165 @@
-import { AuditResult, CategoryResult } from '@types';
+import type { AuditResult } from '../types';
+import { EFFORT_LABELS, formatWeight } from '../lib/format';
 
 export type ExportFormat = 'json' | 'csv' | 'markdown';
 
-export function exportData(
-  data: AuditResult,
-  format: ExportFormat,
-  filename?: string
-): void {
+export function exportData(data: AuditResult, format: ExportFormat): void {
   const timestamp = new Date().toISOString().split('T')[0];
-  const defaultFilename = `audit-report-${timestamp}`;
-  
+  const base = `dsaudit-${timestamp}`;
+
   switch (format) {
     case 'json':
-      exportJSON(data, filename || `${defaultFilename}.json`);
+      downloadFile(JSON.stringify(data, null, 2), `${base}.json`, 'application/json');
       break;
     case 'csv':
-      exportCSV(data, filename || `${defaultFilename}.csv`);
+      downloadFile(toCSV(data), `${base}.csv`, 'text/csv');
       break;
     case 'markdown':
-      exportMarkdown(data, filename || `${defaultFilename}.md`);
+      downloadFile(toMarkdown(data), `${base}.md`, 'text/markdown');
       break;
   }
 }
 
-function exportJSON(data: AuditResult, filename: string): void {
-  const jsonStr = JSON.stringify(data, null, 2);
-  downloadFile(jsonStr, filename, 'application/json');
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
-function exportCSV(data: AuditResult, filename: string): void {
-  // Create CSV header
+function toCSV(data: AuditResult): string {
   const headers = [
     'Category',
     'Score',
+    'Deterministic Score',
+    'Judge Score',
     'Grade',
     'Weight',
-    'Findings Count',
-    'Success Count',
-    'Warning Count',
-    'Error Count'
+    'Findings',
+    'Errors',
+    'Warnings',
   ];
-  
-  // Create CSV rows
+
   const rows = data.categories.map(cat => {
-    const successCount = cat.findings?.filter(f => f.type === 'success').length || 0;
-    const warningCount = cat.findings?.filter(f => f.type === 'warning').length || 0;
-    const errorCount = cat.findings?.filter(f => f.type === 'error').length || 0;
-    
+    const errorCount = cat.findings?.filter(f => f.type === 'error').length ?? 0;
+    const warningCount = cat.findings?.filter(f => f.type === 'warning').length ?? 0;
     return [
       cat.name,
       cat.score,
+      cat.deterministicScore ?? '',
+      cat.judge?.score ?? '',
       cat.grade,
-      cat.weight,
-      cat.findings?.length || 0,
-      successCount,
+      formatWeight(cat.weight),
+      cat.findings?.length ?? 0,
+      errorCount,
       warningCount,
-      errorCount
     ];
   });
-  
-  // Add summary row
-  rows.push([
-    'OVERALL',
-    data.overallScore,
-    data.overallGrade,
-    '100',
-    data.metadata.filesScanned,
-    '',
-    '',
-    data.metadata.errors.length
-  ]);
-  
-  // Convert to CSV format
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-  ].join('\n');
-  
-  downloadFile(csvContent, filename, 'text/csv');
+
+  rows.push(['OVERALL', data.overallScore, '', '', data.overallGrade, '100%', '', '', '']);
+
+  return [headers, ...rows].map(row => row.map(csvCell).join(',')).join('\n');
 }
 
-function exportMarkdown(data: AuditResult, filename: string): void {
-  let markdown = `# Design System Audit Report
+function toMarkdown(data: AuditResult): string {
+  const lines: string[] = [];
 
-**Date:** ${new Date(data.timestamp).toLocaleDateString()}  
-**Project:** ${data.projectPath}  
-**Overall Score:** ${data.overallScore}/100 (Grade ${data.overallGrade})  
-**Files Scanned:** ${data.metadata.filesScanned}
+  lines.push('# Design System Audit Report');
+  lines.push('');
+  lines.push(`**Date:** ${new Date(data.timestamp).toLocaleString()}  `);
+  lines.push(`**Project:** ${data.projectPath}  `);
+  lines.push(`**Overall Score:** ${data.overallScore}/100 (Grade ${data.overallGrade})  `);
+  lines.push(`**Files Scanned:** ${data.metadata.filesScanned}`);
+  lines.push('');
 
-## Summary
-
-`;
-
-  // Add AI insights if available
-  if (data.aiInsights?.summary) {
-    markdown += data.aiInsights.summary + '\n\n';
+  if (data.partial && data.metadata.failedCategories?.length) {
+    lines.push('> **Partial result** — the following categories failed to run and are');
+    lines.push('> excluded from the overall score:');
+    data.metadata.failedCategories.forEach(f => {
+      lines.push(`> - ${f.id}: ${f.error}`);
+    });
+    lines.push('');
   }
 
-  // Category scores table
-  markdown += `## Category Scores
-
-| Category | Score | Grade | Weight |
-|----------|-------|-------|--------|
-`;
-
-  data.categories.forEach(cat => {
-    markdown += `| ${cat.name} | ${cat.score}/100 | ${cat.grade} | ${cat.weight}% |\n`;
-  });
-
-  markdown += '\n## Detailed Analysis\n\n';
-
-  // Detailed category information
-  data.categories.forEach(cat => {
-    markdown += `### ${cat.name}\n\n`;
-    markdown += `**Score:** ${cat.score}/100 (Grade ${cat.grade})\n\n`;
-    
-    if (cat.findings && cat.findings.length > 0) {
-      const successes = cat.findings.filter(f => f.type === 'success');
-      const issues = cat.findings.filter(f => f.type !== 'success');
-      
-      if (successes.length > 0) {
-        markdown += `#### ✅ What's Working (${successes.length})\n\n`;
-        successes.forEach(f => {
-          markdown += `- ${f.message}\n`;
-        });
-        markdown += '\n';
-      }
-      
-      if (issues.length > 0) {
-        markdown += `#### ⚠️ Issues Found (${issues.length})\n\n`;
-        issues.forEach(f => {
-          const icon = f.type === 'error' ? '❌' : '⚠️';
-          markdown += `- ${icon} ${f.message}\n`;
-        });
-        markdown += '\n';
-      }
+  if (data.aiInsights?.summary) {
+    lines.push('## AI Insights');
+    lines.push('');
+    lines.push(data.aiInsights.summary);
+    lines.push('');
+    if (data.aiInsights.strengths?.length) {
+      lines.push('**Strengths**');
+      data.aiInsights.strengths.forEach(s => lines.push(`- ${s}`));
+      lines.push('');
     }
-    
-    if (cat.recommendations && cat.recommendations.length > 0) {
-      markdown += `#### 📋 Recommendations\n\n`;
-      cat.recommendations.forEach(rec => {
-        markdown += `**${rec.title}**\n`;
-        markdown += `- Priority: ${rec.priority}\n`;
-        markdown += `- Effort: ${rec.effort}\n`;
-        markdown += `- ${rec.description}\n\n`;
+    if (data.aiInsights.improvements?.length) {
+      lines.push('**Improvements**');
+      data.aiInsights.improvements.forEach(s => lines.push(`- ${s}`));
+      lines.push('');
+    }
+  }
+
+  lines.push('## Category Scores');
+  lines.push('');
+  lines.push('| Category | Score | Grade | Weight |');
+  lines.push('|----------|-------|-------|--------|');
+  data.categories.forEach(cat => {
+    lines.push(`| ${cat.name} | ${cat.score}/100 | ${cat.grade} | ${formatWeight(cat.weight)} |`);
+  });
+  lines.push('');
+
+  lines.push('## Detailed Findings');
+  lines.push('');
+  data.categories.forEach(cat => {
+    lines.push(`### ${cat.name}`);
+    lines.push('');
+    lines.push(`**Score:** ${cat.score}/100 (Grade ${cat.grade})`);
+    if (cat.judge) {
+      lines.push('');
+      lines.push(
+        `AI judge score: ${cat.judge.score}/100 (${cat.judge.confidence} confidence, ` +
+          `model: ${cat.judge.model}). Deterministic score: ${cat.deterministicScore ?? cat.score}.`
+      );
+    }
+    lines.push('');
+
+    const successes = cat.findings?.filter(f => f.type === 'success') ?? [];
+    const issues = cat.findings?.filter(f => f.type !== 'success') ?? [];
+
+    if (successes.length > 0) {
+      lines.push(`#### What's working (${successes.length})`);
+      lines.push('');
+      successes.forEach(f => lines.push(`- ${f.message}`));
+      lines.push('');
+    }
+    if (issues.length > 0) {
+      lines.push(`#### Issues (${issues.length})`);
+      lines.push('');
+      issues.forEach(f => {
+        const judgeTag = f.id?.startsWith('judge-') ? ' _(AI judge)_' : '';
+        lines.push(`- **[${f.severity}]** ${f.message}${judgeTag}`);
+        if (f.suggestion) lines.push(`  - Suggestion: ${f.suggestion}`);
       });
+      lines.push('');
     }
-    
-    markdown += '---\n\n';
+    lines.push('---');
+    lines.push('');
   });
 
-  // Top recommendations
-  markdown += `## Top Recommendations\n\n`;
-  const highPriorityRecs = data.recommendations.filter(r => r.priority === 'high');
-  
-  if (highPriorityRecs.length > 0) {
-    markdown += `### High Priority\n\n`;
-    highPriorityRecs.forEach(rec => {
-      markdown += `1. **${rec.title}**\n   ${rec.description}\n\n`;
+  if (data.recommendations.length > 0) {
+    lines.push('## Recommendations');
+    lines.push('');
+    (['high', 'medium', 'low'] as const).forEach(priority => {
+      const recs = data.recommendations.filter(r => r.priority === priority);
+      if (recs.length === 0) return;
+      lines.push(`### ${priority.charAt(0).toUpperCase() + priority.slice(1)} priority`);
+      lines.push('');
+      recs.forEach(rec => {
+        lines.push(`- **${rec.title}** (${EFFORT_LABELS[rec.effort] ?? rec.effort})`);
+        lines.push(`  ${rec.description}`);
+        if (rec.implementation) lines.push(`  - Implementation: ${rec.implementation}`);
+      });
+      lines.push('');
     });
   }
 
-  downloadFile(markdown, filename, 'text/markdown');
+  return lines.join('\n');
 }
 
 function downloadFile(content: string, filename: string, mimeType: string): void {
@@ -174,26 +172,4 @@ function downloadFile(content: string, filename: string, mimeType: string): void
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-}
-
-// Export chart as image
-export async function exportChartAsImage(
-  canvasId: string,
-  filename: string = 'chart.png'
-): Promise<void> {
-  const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
-  if (!canvas) {
-    throw new Error('Canvas not found');
-  }
-  
-  canvas.toBlob((blob) => {
-    if (blob) {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
-    }
-  }, 'image/png');
 }
