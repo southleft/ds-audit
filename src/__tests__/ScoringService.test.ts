@@ -62,6 +62,23 @@ describe('ScoringService', () => {
       expect(result.score).toBe(80);
     });
 
+    it('keeps the experimental ai-readiness category out of the overall score', () => {
+      // ai-readiness is intentionally absent from CATEGORY_WEIGHTS while
+      // experimental. If someone adds it to the weights table, this test
+      // forces them to make that decision explicitly.
+      expect(CATEGORY_WEIGHTS['ai-readiness']).toBeUndefined();
+
+      const withExperimental = scoringService.calculateOverallScore([
+        category({ id: 'components', score: 80 }),
+        category({ id: 'ai-readiness', score: 5 }),
+      ]);
+      const without = scoringService.calculateOverallScore([
+        category({ id: 'components', score: 80 }),
+      ]);
+
+      expect(withExperimental.score).toBe(without.score);
+    });
+
     it('handles empty categories', () => {
       const result = scoringService.calculateOverallScore([]);
       expect(result.score).toBe(0);

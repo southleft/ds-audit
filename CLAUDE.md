@@ -27,7 +27,7 @@ CLI-based design system auditing tool ("Chrome Lighthouse for design systems") t
 Deterministic auditors + optional LLM judge (`src/core/LLMJudge.ts`); single scoring table in `src/core/ScoringService.ts` (`CATEGORY_WEIGHTS`).
 
 - **CLI Layer** (`src/cli/`) - Commands: init, run, config. Shared config defaults exported from `src/cli/commands/config.ts` (`createDefaultConfig`)
-- **Core Layer** (`src/core/`) - `AuditEngine` orchestrates deterministic auditors; the optional LLM judge performs rubric-based review of judged categories (documentation, components, tokens), blended at a bounded weight (`ai.judgeWeight`, default 0.3 — deterministic score always dominates)
+- **Core Layer** (`src/core/`) - `AuditEngine` orchestrates deterministic auditors; the optional LLM judge performs rubric-based review of judged categories (documentation, components, tokens, ai-readiness), blended at a bounded weight (`ai.judgeWeight`, default 0.3 — deterministic score always dominates)
 - **Modules Layer** (`src/modules/`) - Individual deterministic auditors per category
 - **Dashboard Layer** (`src/dashboard/`) - React 19 + Mantine UI served by Express with SSE live progress
 - **Utils Layer** (`src/utils/`) - Shared utilities
@@ -39,6 +39,13 @@ Deterministic auditors + optional LLM judge (`src/core/LLMJudge.ts`); single sco
 4. **Accessibility** (13%)
 5. **Tooling** (12%)
 6. **Performance** (10%)
+
+**AI Readiness** (`ai-readiness`, experimental): machine-consumability of the
+design system for AI coding assistants — contract quality, discoverability,
+agent guidance files (CLAUDE.md/AGENTS.md/llms.txt/MCP), example density, and
+guardrails. Scored, reported, and judged (blind consumption test), but
+deliberately absent from CATEGORY_WEIGHTS so it never affects the overall
+score; a ScoringService test enforces this. Enable via `modules.aiReadiness`.
 
 Grade bands: A >= 90, B >= 80, C >= 70, D >= 60, F below.
 

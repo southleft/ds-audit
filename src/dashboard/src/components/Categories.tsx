@@ -10,6 +10,7 @@ import { DocumentationMetrics } from './categories/DocumentationMetrics';
 import { ToolingMetrics } from './categories/ToolingMetrics';
 import { PerformanceMetrics } from './categories/PerformanceMetrics';
 import { AccessibilityMetrics } from './categories/AccessibilityMetrics';
+import { AIReadinessMetrics } from './categories/AIReadinessMetrics';
 
 /** Category-specific metrics panels, keyed by stable category id. */
 const METRICS_PANELS: Record<string, React.ComponentType<{ category: CategoryResult }>> = {
@@ -19,6 +20,7 @@ const METRICS_PANELS: Record<string, React.ComponentType<{ category: CategoryRes
   tooling: ToolingMetrics,
   performance: PerformanceMetrics,
   accessibility: AccessibilityMetrics,
+  'ai-readiness': AIReadinessMetrics,
 };
 
 function CategoryHeader({ category }: { category: CategoryResult }) {
@@ -52,9 +54,15 @@ function CategoryHeader({ category }: { category: CategoryResult }) {
             </Badge>
           </Group>
           <Group gap="md">
-            <Text size="sm" c="dimmed">
-              Weight in overall score: <strong>{formatWeight(category.weight)}</strong>
-            </Text>
+            {category.weight > 0 ? (
+              <Text size="sm" c="dimmed">
+                Weight in overall score: <strong>{formatWeight(category.weight)}</strong>
+              </Text>
+            ) : (
+              <Badge variant="light" color="teal">
+                Experimental — not counted in the overall score
+              </Badge>
+            )}
             <Text size="sm" c="dimmed">
               {issueCount} issue{issueCount === 1 ? '' : 's'} found
             </Text>

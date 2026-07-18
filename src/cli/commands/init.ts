@@ -304,6 +304,7 @@ async function buildConfiguration(options: any, logger: Logger): Promise<AuditCo
           { name: 'Tooling', value: 'tooling', checked: true },
           { name: 'Performance', value: 'performance', checked: true },
           { name: 'Accessibility', value: 'accessibility', checked: true },
+          { name: 'AI Readiness (experimental, not weighted)', value: 'aiReadiness', checked: true },
         ],
       },
       {

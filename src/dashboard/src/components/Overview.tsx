@@ -137,10 +137,12 @@ const Overview: React.FC<OverviewProps> = ({ auditResult, onSelectCategory, onNa
               )}
             </Group>
             <Text size="sm" c="dimmed">
-              Weighted across {categories?.length ?? 0} audited categor
-              {categories?.length === 1 ? 'y' : 'ies'}
+              Weighted across {categories?.filter(c => c.weight > 0).length ?? 0} audited categor
+              {categories?.filter(c => c.weight > 0).length === 1 ? 'y' : 'ies'}
               {judgedCount > 0 &&
                 ` — ${judgedCount} reviewed by the AI judge and blended with deterministic scores`}
+              {(categories?.some(c => c.weight === 0) ?? false) &&
+                '. Experimental categories are reported but not weighted'}
               .
             </Text>
             {frameworks.length > 0 && (
@@ -262,9 +264,15 @@ const Overview: React.FC<OverviewProps> = ({ auditResult, onSelectCategory, onNa
                     <Text size="sm" fw={600}>
                       {category.name}
                     </Text>
-                    <Badge size="xs" variant="light" color="gray">
-                      weight {formatWeight(category.weight)}
-                    </Badge>
+                    {category.weight > 0 ? (
+                      <Badge size="xs" variant="light" color="gray">
+                        weight {formatWeight(category.weight)}
+                      </Badge>
+                    ) : (
+                      <Badge size="xs" variant="light" color="teal">
+                        experimental
+                      </Badge>
+                    )}
                     {category.judge && (
                       <Badge size="xs" variant="light" color="grape">
                         AI judged

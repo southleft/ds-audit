@@ -22,6 +22,7 @@ export function createDefaultConfig(projectPath: string = process.cwd()): AuditC
       tooling: true,
       performance: true,
       accessibility: true,
+      aiReadiness: true, // Experimental — reported but not weighted
     },
     ai: {
       enabled: false,

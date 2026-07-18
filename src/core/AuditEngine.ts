@@ -13,6 +13,7 @@ import { DocumentationAuditor } from '../modules/DocumentationAuditor.js';
 import { ToolingAuditor } from '../modules/ToolingAuditor.js';
 import { PerformanceAuditor } from '../modules/PerformanceAuditor.js';
 import { AccessibilityAuditor } from '../modules/AccessibilityAuditor.js';
+import { AIReadinessAuditor } from '../modules/AIReadinessAuditor.js';
 import { ScoringService } from './ScoringService.js';
 import { LLMJudge } from './LLMJudge.js';
 import { Logger } from '../utils/Logger.js';
@@ -64,6 +65,11 @@ export class AuditEngine extends EventEmitter {
     }
     if (modules.accessibility) {
       this.auditors.set('accessibility', new AccessibilityAuditor(this.config));
+    }
+    if (modules.aiReadiness) {
+      // Experimental: scored and reported, but has no entry in
+      // CATEGORY_WEIGHTS so it never affects the overall score.
+      this.auditors.set('ai-readiness', new AIReadinessAuditor(this.config));
     }
   }
 

@@ -11,6 +11,11 @@ export interface AuditConfig {
     tooling: boolean;
     performance: boolean;
     accessibility: boolean;
+    /** Experimental: machine-consumability of the design system for AI
+     * coding assistants. Scored and reported, but excluded from the
+     * weighted overall score. Optional so configs written before this
+     * category existed keep loading. */
+    aiReadiness?: boolean;
   };
   ai: {
     enabled: boolean;

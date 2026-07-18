@@ -308,6 +308,11 @@ export class DashboardServer {
             } else if (filePath.endsWith('.js')) {
               res.setHeader('Content-Type', 'application/javascript');
             }
+            // index.html must revalidate every load or browsers keep serving
+            // a bundle from before the last upgrade. Hashed assets stay cached.
+            if (filePath.endsWith('index.html')) {
+              res.setHeader('Cache-Control', 'no-cache');
+            }
           },
         })
       );
@@ -319,6 +324,7 @@ export class DashboardServer {
         }
         try {
           const html = await fs.readFile(reactBuildPath, 'utf-8');
+          res.setHeader('Cache-Control', 'no-cache');
           res.send(html);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
