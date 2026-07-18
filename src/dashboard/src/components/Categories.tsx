@@ -12,6 +12,18 @@ import { PerformanceMetrics } from './categories/PerformanceMetrics';
 import { AccessibilityMetrics } from './categories/AccessibilityMetrics';
 import { AIReadinessMetrics } from './categories/AIReadinessMetrics';
 
+/** Short tab labels so all seven categories fit on one line — the full
+ * category name still heads the detail panel. */
+const TAB_LABELS: Record<string, string> = {
+  components: 'Components',
+  tokens: 'Tokens',
+  documentation: 'Documentation',
+  tooling: 'Tooling',
+  performance: 'Performance',
+  accessibility: 'Accessibility',
+  'ai-readiness': 'AI Readiness',
+};
+
 /** Category-specific metrics panels, keyed by stable category id. */
 const METRICS_PANELS: Record<string, React.ComponentType<{ category: CategoryResult }>> = {
   components: ComponentsMetrics,
@@ -150,7 +162,7 @@ const Categories: React.FC<CategoriesProps> = ({ auditResult, initialCategoryId 
                 </Badge>
               }
             >
-              {category.name}
+              {TAB_LABELS[category.id] ?? category.name}
             </Tabs.Tab>
           ))}
         </Tabs.List>
