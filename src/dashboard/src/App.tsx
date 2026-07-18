@@ -103,6 +103,11 @@ function App() {
     loadAuditResults();
   }, [loadAuditResults]);
 
+  // Each view is a fresh page — don't inherit the previous view's scroll offset
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentSection]);
+
   // Hash-based navigation (e.g. the CLI opens /#progress)
   useEffect(() => {
     const handleHashChange = () => {
@@ -181,7 +186,7 @@ function App() {
       case 'action-plan':
         return <ActionPlan auditResult={auditResult} />;
       case 'progress':
-        return <Progress auditResult={auditResult} progress={progress} />;
+        return <Progress auditResult={auditResult} progress={progress} resultsLoading={loading} />;
       case 'export':
         return <Export auditResult={auditResult} />;
       default:

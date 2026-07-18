@@ -6,13 +6,14 @@ import {
   Divider,
   Group,
   List,
+  Paper,
   Stack,
   Text,
   ThemeIcon,
   Title,
   Spoiler,
 } from '@mantine/core';
-import { Sparkles, CheckCircle2 } from 'lucide-react';
+import { Sparkles, CheckCircle2, Lightbulb } from 'lucide-react';
 import type { CategoryResult } from '../types';
 import { SEVERITY_COLORS } from '../lib/format';
 
@@ -86,20 +87,21 @@ export function JudgePanel({ category }: { category: CategoryResult }) {
       )}
 
       {judge.summary && (
-        <Text size="sm" mb="sm">
+        <Text size="sm" lh={1.65} maw="75ch" mb="md">
           {judge.summary}
         </Text>
       )}
 
       {(judge.strengths?.length ?? 0) > 0 && (
         <>
-          <Text size="sm" fw={600} mb={4}>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={8}>
             Strengths
           </Text>
           <List
             size="sm"
-            spacing={4}
-            mb="sm"
+            spacing={8}
+            mb="md"
+            styles={{ itemWrapper: { alignItems: 'flex-start' } }}
             icon={
               <ThemeIcon variant="light" color="green" size="sm" radius="xl">
                 <CheckCircle2 size={12} />
@@ -107,7 +109,11 @@ export function JudgePanel({ category }: { category: CategoryResult }) {
             }
           >
             {(judge.strengths ?? []).map((strength, i) => (
-              <List.Item key={i}>{strength}</List.Item>
+              <List.Item key={i}>
+                <Text size="sm" lh={1.55} maw="72ch">
+                  {strength}
+                </Text>
+              </List.Item>
             ))}
           </List>
         </>
@@ -115,26 +121,46 @@ export function JudgePanel({ category }: { category: CategoryResult }) {
 
       {(judge.issues?.length ?? 0) > 0 && (
         <>
-          <Text size="sm" fw={600} mb={4}>
+          <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={8}>
             Issues raised by the AI judge
           </Text>
-          <Stack gap="xs" mb="sm">
-            {(judge.issues ?? []).map((issue, i) => (
-              <Group key={i} align="flex-start" gap="xs" wrap="nowrap">
-                <Badge color={SEVERITY_COLORS[issue.severity] ?? 'gray'} size="xs" mt={3}>
-                  {issue.severity}
-                </Badge>
-                <Stack gap={2} style={{ flex: 1 }}>
-                  <Text size="sm">{issue.description}</Text>
-                  {issue.file && <Code style={{ alignSelf: 'flex-start' }}>{issue.file}</Code>}
-                  {issue.suggestion && (
-                    <Text size="xs" c="dimmed">
-                      Suggestion: {issue.suggestion}
+          <Stack gap="sm" mb="md">
+            {(judge.issues ?? []).map((issue, i) => {
+              const color = SEVERITY_COLORS[issue.severity] ?? 'gray';
+              return (
+                <Paper
+                  key={i}
+                  withBorder
+                  radius="sm"
+                  p="sm"
+                  style={{ borderLeft: `3px solid var(--mantine-color-${color}-6)` }}
+                >
+                  <Stack gap={6}>
+                    <Group gap="xs" wrap="wrap">
+                      <Badge color={color} size="xs">
+                        {issue.severity}
+                      </Badge>
+                      {issue.file && <Code fz="xs">{issue.file}</Code>}
+                    </Group>
+                    <Text size="sm" lh={1.55} maw="80ch">
+                      {issue.description}
                     </Text>
-                  )}
-                </Stack>
-              </Group>
-            ))}
+                    {issue.suggestion && (
+                      <Group gap={6} wrap="nowrap" align="flex-start">
+                        <Lightbulb
+                          size={14}
+                          style={{ marginTop: 2, flexShrink: 0 }}
+                          color="var(--mantine-color-dimmed)"
+                        />
+                        <Text size="xs" c="dimmed" lh={1.5} maw="80ch">
+                          {issue.suggestion}
+                        </Text>
+                      </Group>
+                    )}
+                  </Stack>
+                </Paper>
+              );
+            })}
           </Stack>
         </>
       )}

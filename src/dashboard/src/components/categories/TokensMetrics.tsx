@@ -3,6 +3,7 @@ import {
   Badge,
   Card,
   Code,
+  ColorSwatch,
   Group,
   RingProgress,
   Stack,
@@ -21,6 +22,16 @@ import type {
 import { arr, num, rec, str } from '../../lib/metrics';
 import { scoreColor } from '../../lib/format';
 import { DataTable } from '../shared/DataTable';
+
+/** A style value with a swatch preview when it's a color. */
+function ValueCell({ value, isColor }: { value: string; isColor: boolean }) {
+  return (
+    <Group gap={8} wrap="nowrap">
+      {isColor && <ColorSwatch color={value} size={14} radius="sm" withShadow={false} />}
+      <Code style={{ whiteSpace: 'nowrap' }}>{value}</Code>
+    </Group>
+  );
+}
 
 function getCoverage(m: Record<string, unknown> | undefined): TokenCoverageMetrics | undefined {
   const coverage = rec(m, 'coverage');
@@ -226,13 +237,14 @@ export function TokensMetrics({ category }: { category: CategoryResult }) {
             {
               key: 'value',
               header: 'Value',
-              render: row => <Code>{row.value}</Code>,
+              width: 250,
+              render: row => <ValueCell value={row.value} isColor={row.type === 'color'} />,
             },
-            { key: 'type', header: 'Type', width: 110 },
+            { key: 'type', header: 'Type', width: 120 },
             {
               key: 'occurrences',
               header: 'Occurrences',
-              width: 110,
+              width: 120,
               render: row => row.files?.length ?? 0,
             },
             {
@@ -310,8 +322,13 @@ export function TokensMetrics({ category }: { category: CategoryResult }) {
               {
                 key: 'value',
                 header: 'Value',
-                width: 140,
-                render: row => <Code>{row.tokens?.[0]?.value ?? '—'}</Code>,
+                width: 240,
+                render: row => (
+                  <ValueCell
+                    value={row.tokens?.[0]?.value ?? '—'}
+                    isColor={row.type === 'color' && !!row.tokens?.[0]?.value}
+                  />
+                ),
               },
             ]}
             data={redundancies}

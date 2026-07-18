@@ -23,6 +23,8 @@ interface ProgressProps {
   auditResult: AuditResult | null;
   /** Live progress state, owned by App so the header indicator shares one SSE connection. */
   progress: ProgressState;
+  /** True while App is (re)fetching results — e.g. right after audit:complete. */
+  resultsLoading: boolean;
 }
 
 function statusIcon(status: CategoryStatus | undefined, isCurrent: boolean) {
@@ -33,7 +35,7 @@ function statusIcon(status: CategoryStatus | undefined, isCurrent: boolean) {
   return <Clock size={18} color="var(--mantine-color-gray-6)" />;
 }
 
-const Progress: React.FC<ProgressProps> = ({ auditResult, progress: state }) => {
+const Progress: React.FC<ProgressProps> = ({ auditResult, progress: state, resultsLoading }) => {
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
@@ -216,7 +218,17 @@ const Progress: React.FC<ProgressProps> = ({ auditResult, progress: state }) => 
 
             {state.isComplete && (
               <Alert color="green" title="Audit complete" icon={<CheckCircle size={16} />}>
-                <Text size="sm">Loading fresh results...</Text>
+                {resultsLoading ? (
+                  <Group gap="xs">
+                    <Loader size={14} />
+                    <Text size="sm">Loading fresh results...</Text>
+                  </Group>
+                ) : (
+                  <Text size="sm">
+                    Results are loaded — the Overview, Categories, and Action Plan now reflect this
+                    run.
+                  </Text>
+                )}
               </Alert>
             )}
           </Stack>
